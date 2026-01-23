@@ -127,6 +127,27 @@ impl TrueNasClient {
 
         Ok(response.json().await?)
     }
+
+    /// Make a DELETE request with body
+    #[allow(dead_code)]
+    pub async fn delete_with_body<T: DeserializeOwned, B: Serialize>(&self, endpoint: &str, body: &B) -> Result<T> {
+        let url = format!("{}{}", self.base_url, endpoint);
+        let mut request = self.client.delete(&url).json(body);
+
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header(header::AUTHORIZATION, auth);
+        }
+
+        let response = request.send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(TrueNasError::ApiError { status, message });
+        }
+
+        Ok(response.json().await?)
+    }
 }
 
 /// Helper to create basic auth string

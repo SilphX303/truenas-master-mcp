@@ -455,4 +455,159 @@ impl TrueNasTools {
 
         self.get_app(app_name).await
     }
+
+    // === App Management (SCALE-specific) ===
+    #[allow(dead_code)]
+    pub async fn create_app(
+        &self,
+        catalog: &str,
+        item: &str,
+        name: &str,
+        values: serde_json::Value,
+        version: Option<&str>,
+    ) -> Result<AppInfo> {
+        #[derive(Serialize)]
+        struct CreateAppRequest {
+            catalog: String,
+            item: String,
+            name: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            version: Option<String>,
+            values: serde_json::Value,
+        }
+        self.client.post("/api/v2.0/app", &CreateAppRequest {
+            catalog: catalog.to_string(),
+            item: item.to_string(),
+            name: name.to_string(),
+            version: version.map(|v| v.to_string()),
+            values,
+        }).await
+    }
+
+    /// Update an existing application
+    #[allow(dead_code)]
+    pub async fn update_app(
+        &self,
+        app_name: &str,
+        values: serde_json::Value,
+    ) -> Result<AppInfo> {
+        let encoded = urlencoding::encode(app_name);
+        self.client.put(&format!("/api/v2.0/app/{}", encoded), &values).await
+    }
+
+    /// Delete an application
+    #[allow(dead_code)]
+    pub async fn delete_app(&self, app_name: &str, force: bool) -> Result<()> {
+        let encoded = urlencoding::encode(app_name);
+        #[derive(Serialize)]
+        struct DeleteRequest {
+            force: bool,
+        }
+        self.client.delete_with_body(&format!("/api/v2.0/app/{}", encoded), &DeleteRequest { force }).await
+    }
+
+    /// Rollback an application to a previous version
+    #[allow(dead_code)]
+    pub async fn rollback_app(
+        &self,
+        app_name: &str,
+        rollback_version: Option<&str>,
+        snap_name: Option<&str>,
+        force: bool,
+    ) -> Result<AppInfo> {
+        let encoded = urlencoding::encode(app_name);
+        #[derive(Serialize)]
+        struct RollbackRequest {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            rollback_version: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            snap_name: Option<String>,
+            force: bool,
+        }
+        self.client.post(&format!("/api/v2.0/app/{}/rollback", encoded), &RollbackRequest {
+            rollback_version: rollback_version.map(|v| v.to_string()),
+            snap_name: snap_name.map(|v| v.to_string()),
+            force,
+        }).await
+    }
+
+    /// Get configuration of an application
+    #[allow(dead_code)]
+    pub async fn get_app_config(&self, app_name: &str) -> Result<serde_json::Value> {
+        let encoded = urlencoding::encode(app_name);
+        self.client.get(&format!("/api/v2.0/app/{}/config", encoded)).await
+    }
+
+    /// Get upgrade options for an application
+    #[allow(dead_code)]
+    pub async fn get_app_upgrade_options(&self, app_name: &str) -> Result<serde_json::Value> {
+        let encoded = urlencoding::encode(app_name);
+        self.client.get(&format!("/api/v2.0/app/{}/upgrade_options", encoded)).await
+    }
+
+    /// Upgrade an application
+    #[allow(dead_code)]
+    pub async fn upgrade_app(&self, app_name: &str, options: serde_json::Value) -> Result<AppInfo> {
+        let encoded = urlencoding::encode(app_name);
+        self.client.post(&format!("/api/v2.0/app/{}/upgrade", encoded), &options).await
+    }
+
+    /// List available catalog items
+    #[allow(dead_code)]
+    pub async fn list_catalog_items(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/catalog").await
+    }
+
+    /// Get details of a specific catalog
+    #[allow(dead_code)]
+    pub async fn get_catalog(&self, catalog_id: &str) -> Result<serde_json::Value> {
+        let encoded = urlencoding::encode(catalog_id);
+        self.client.get(&format!("/api/v2.0/catalog/{}", encoded)).await
+    }
+
+    /// Get all available train versions from a catalog
+    #[allow(dead_code)]
+    pub async fn get_catalog_trains(&self, catalog_id: &str) -> Result<serde_json::Value> {
+        let encoded = urlencoding::encode(catalog_id);
+        self.client.get(&format!("/api/v2.0/catalog/{}/trains", encoded)).await
+    }
+
+    /// Get item details from a catalog
+    #[allow(dead_code)]
+    pub async fn get_catalog_item(&self, catalog_id: &str, item: &str, train: &str) -> Result<serde_json::Value> {
+        let encoded_catalog = urlencoding::encode(catalog_id);
+        let encoded_item = urlencoding::encode(item);
+        self.client.get(&format!("/api/v2.0/catalog/{}/{}/{}", encoded_catalog, encoded_item, train)).await
+    }
+
+    /// List chart releases (deployed apps)
+    #[allow(dead_code)]
+    pub async fn list_chart_releases(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/chart/release").await
+    }
+
+    /// Get chart release details
+    #[allow(dead_code)]
+    pub async fn get_chart_release(&self, release_name: &str) -> Result<serde_json::Value> {
+        let encoded = urlencoding::encode(release_name);
+        self.client.get(&format!("/api/v2.0/chart/release/{}", encoded)).await
+    }
+
+    /// Get chart release resources
+    #[allow(dead_code)]
+    pub async fn get_chart_release_resources(&self, release_name: &str) -> Result<serde_json::Value> {
+        let encoded = urlencoding::encode(release_name);
+        self.client.get(&format!("/api/v2.0/chart/release/{}/resources", encoded)).await
+    }
+
+    /// Scale an app replica set
+    #[allow(dead_code)]
+    pub async fn scale_app(&self, app_name: &str, replica: i32) -> Result<AppInfo> {
+        let encoded = urlencoding::encode(app_name);
+        #[derive(Serialize)]
+        struct ScaleRequest {
+            replica: i32,
+        }
+        self.client.post(&format!("/api/v2.0/app/{}/scale", encoded), &ScaleRequest { replica }).await
+    }
 }

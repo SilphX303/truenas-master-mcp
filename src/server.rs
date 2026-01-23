@@ -313,6 +313,180 @@ impl TrueNasServer {
                     "required": ["app_name"]
                 }),
             },
+            Tool {
+                name: "create_app".to_string(),
+                description: Some("Create a new application from a catalog item".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "catalog": {"type": "string", "description": "Catalog name (e.g., 'official', 'community')"},
+                        "item": {"type": "string", "description": "Application item name from catalog"},
+                        "name": {"type": "string", "description": "Name for the new application"},
+                        "values": {"type": "object", "description": "Configuration values for the application"},
+                        "version": {"type": "string", "description": "Optional specific version to install"}
+                    },
+                    "required": ["catalog", "item", "name", "values"]
+                }),
+            },
+            Tool {
+                name: "update_app".to_string(),
+                description: Some("Update an existing application with new configuration".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "app_name": {"type": "string"},
+                        "values": {"type": "object"}
+                    },
+                    "required": ["app_name", "values"]
+                }),
+            },
+            Tool {
+                name: "delete_app".to_string(),
+                description: Some("Delete an application from TrueNAS".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "app_name": {"type": "string"},
+                        "force": {"type": "boolean", "description": "Force delete even if apps have dependents"}
+                    },
+                    "required": ["app_name"]
+                }),
+            },
+            Tool {
+                name: "rollback_app".to_string(),
+                description: Some("Rollback an application to a previous version".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "app_name": {"type": "string"},
+                        "rollback_version": {"type": "string", "description": "Version to rollback to"},
+                        "snap_name": {"type": "string", "description": "Snapshot name to rollback to"},
+                        "force": {"type": "boolean"}
+                    },
+                    "required": ["app_name"]
+                }),
+            },
+            Tool {
+                name: "get_app_config".to_string(),
+                description: Some("Get the configuration of an application".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "app_name": {"type": "string"}
+                    },
+                    "required": ["app_name"]
+                }),
+            },
+            Tool {
+                name: "get_app_upgrade_options".to_string(),
+                description: Some("Get available upgrade options for an application".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "app_name": {"type": "string"}
+                    },
+                    "required": ["app_name"]
+                }),
+            },
+            Tool {
+                name: "upgrade_app".to_string(),
+                description: Some("Upgrade an application to a newer version".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "app_name": {"type": "string"},
+                        "options": {"type": "object", "description": "Upgrade options"}
+                    },
+                    "required": ["app_name", "options"]
+                }),
+            },
+            Tool {
+                name: "scale_app".to_string(),
+                description: Some("Scale an application's replica count".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "app_name": {"type": "string"},
+                        "replica": {"type": "integer", "description": "Number of replicas"}
+                    },
+                    "required": ["app_name", "replica"]
+                }),
+            },
+            Tool {
+                name: "list_catalog_items".to_string(),
+                description: Some("List all available catalog items from TrueNAS catalog".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+            Tool {
+                name: "get_catalog".to_string(),
+                description: Some("Get details of a specific catalog".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "catalog_id": {"type": "string"}
+                    },
+                    "required": ["catalog_id"]
+                }),
+            },
+            Tool {
+                name: "get_catalog_trains".to_string(),
+                description: Some("Get all available train versions from a catalog".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "catalog_id": {"type": "string"}
+                    },
+                    "required": ["catalog_id"]
+                }),
+            },
+            Tool {
+                name: "get_catalog_item".to_string(),
+                description: Some("Get details of a specific item from a catalog".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "catalog_id": {"type": "string"},
+                        "item": {"type": "string"},
+                        "train": {"type": "string"}
+                    },
+                    "required": ["catalog_id", "item", "train"]
+                }),
+            },
+            Tool {
+                name: "list_chart_releases".to_string(),
+                description: Some("List all deployed chart releases (apps)".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+            Tool {
+                name: "get_chart_release".to_string(),
+                description: Some("Get details of a specific chart release".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "release_name": {"type": "string"}
+                    },
+                    "required": ["release_name"]
+                }),
+            },
+            Tool {
+                name: "get_chart_release_resources".to_string(),
+                description: Some("Get resources for a specific chart release".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "release_name": {"type": "string"}
+                    },
+                    "required": ["release_name"]
+                }),
+            },
         ]
     }
 }
@@ -583,6 +757,158 @@ impl ServerHandler for TrueNasServer {
                 })?;
                 match self.tools.restart_app(app_name).await {
                     Ok(app) => Ok(json!(app)),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "create_app" => {
+                let catalog = args["catalog"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid catalog".to_string(), None)
+                })?;
+                let item = args["item"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid item".to_string(), None)
+                })?;
+                let name = args["name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid name".to_string(), None)
+                })?;
+                let values = args["values"].clone();
+                let version = args["version"].as_str();
+                match self.tools.create_app(catalog, item, name, values, version).await {
+                    Ok(app) => Ok(json!(app)),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "update_app" => {
+                let app_name = args["app_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
+                })?;
+                let values = args["values"].clone();
+                match self.tools.update_app(app_name, values).await {
+                    Ok(app) => Ok(json!(app)),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "delete_app" => {
+                let app_name = args["app_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
+                })?;
+                let force = args["force"].as_bool().unwrap_or(false);
+                match self.tools.delete_app(app_name, force).await {
+                    Ok(_) => Ok(json!({"status": "deleted", "app_name": app_name})),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "rollback_app" => {
+                let app_name = args["app_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
+                })?;
+                let rollback_version = args["rollback_version"].as_str();
+                let snap_name = args["snap_name"].as_str();
+                let force = args["force"].as_bool().unwrap_or(false);
+                match self.tools.rollback_app(app_name, rollback_version, snap_name, force).await {
+                    Ok(app) => Ok(json!(app)),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "get_app_config" => {
+                let app_name = args["app_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
+                })?;
+                match self.tools.get_app_config(app_name).await {
+                    Ok(config) => Ok(config),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "get_app_upgrade_options" => {
+                let app_name = args["app_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
+                })?;
+                match self.tools.get_app_upgrade_options(app_name).await {
+                    Ok(options) => Ok(options),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "upgrade_app" => {
+                let app_name = args["app_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
+                })?;
+                let options = args["options"].clone();
+                match self.tools.upgrade_app(app_name, options).await {
+                    Ok(app) => Ok(json!(app)),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "scale_app" => {
+                let app_name = args["app_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
+                })?;
+                let replica = args["replica"].as_i64().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid replica".to_string(), None)
+                })? as i32;
+                match self.tools.scale_app(app_name, replica).await {
+                    Ok(app) => Ok(json!(app)),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "list_catalog_items" => {
+                match self.tools.list_catalog_items().await {
+                    Ok(items) => Ok(items),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "get_catalog" => {
+                let catalog_id = args["catalog_id"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid catalog_id".to_string(), None)
+                })?;
+                match self.tools.get_catalog(catalog_id).await {
+                    Ok(catalog) => Ok(catalog),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "get_catalog_trains" => {
+                let catalog_id = args["catalog_id"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid catalog_id".to_string(), None)
+                })?;
+                match self.tools.get_catalog_trains(catalog_id).await {
+                    Ok(trains) => Ok(trains),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "get_catalog_item" => {
+                let catalog_id = args["catalog_id"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid catalog_id".to_string(), None)
+                })?;
+                let item = args["item"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid item".to_string(), None)
+                })?;
+                let train = args["train"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid train".to_string(), None)
+                })?;
+                match self.tools.get_catalog_item(catalog_id, item, train).await {
+                    Ok(item_details) => Ok(item_details),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "list_chart_releases" => {
+                match self.tools.list_chart_releases().await {
+                    Ok(releases) => Ok(releases),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "get_chart_release" => {
+                let release_name = args["release_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid release_name".to_string(), None)
+                })?;
+                match self.tools.get_chart_release(release_name).await {
+                    Ok(release) => Ok(release),
+                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
+                }
+            }
+            "get_chart_release_resources" => {
+                let release_name = args["release_name"].as_str().ok_or_else(|| {
+                    ErrorData::invalid_request("Missing or invalid release_name".to_string(), None)
+                })?;
+                match self.tools.get_chart_release_resources(release_name).await {
+                    Ok(resources) => Ok(resources),
                     Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
                 }
             }

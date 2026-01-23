@@ -9,9 +9,115 @@ use anyhow::Context;
 use clap::Parser;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use std::str::FromStr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+
+/// Tool categories for access control
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToolCategory {
+    Users,
+    Pools,
+    Datasets,
+    Shares,
+    Snapshots,
+    Iscsi,
+    Apps,
+    System,
+    All,
+}
+
+impl FromStr for ToolCategory {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "users" => Ok(ToolCategory::Users),
+            "pools" => Ok(ToolCategory::Pools),
+            "datasets" | "dataset" => Ok(ToolCategory::Datasets),
+            "shares" | "share" => Ok(ToolCategory::Shares),
+            "snapshots" | "snapshot" => Ok(ToolCategory::Snapshots),
+            "iscsi" => Ok(ToolCategory::Iscsi),
+            "apps" | "app" => Ok(ToolCategory::Apps),
+            "system" => Ok(ToolCategory::System),
+            "all" => Ok(ToolCategory::All),
+            _ => Err("Unknown category"),
+        }
+    }
+}
+
+/// Tool access control configuration
+#[derive(Debug, Clone)]
+pub struct ToolConfig {
+    pub readonly: bool,
+    pub enabled_categories: Vec<ToolCategory>,
+    pub disabled_categories: Vec<ToolCategory>,
+}
+
+impl Default for ToolConfig {
+    fn default() -> Self {
+        Self {
+            readonly: false,
+            enabled_categories: vec![ToolCategory::All],
+            disabled_categories: vec![],
+        }
+    }
+}
+
+impl ToolConfig {
+    /// Create config from environment variables
+    pub fn from_env() -> Self {
+        let readonly = std::env::var("TRUENAS_READONLY")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false);
+
+        let enabled_categories: Vec<ToolCategory> = std::env::var("TRUENAS_ENABLED_CATEGORIES")
+            .ok()
+            .map(|v| v.split(',').filter_map(|c| ToolCategory::from_str(c).ok()).collect())
+            .unwrap_or_default();
+
+        let disabled_categories: Vec<ToolCategory> = std::env::var("TRUENAS_DISABLED_CATEGORIES")
+            .ok()
+            .map(|v| v.split(',').filter_map(|c| ToolCategory::from_str(c).ok()).collect())
+            .unwrap_or_default();
+
+        Self {
+            readonly,
+            enabled_categories: if enabled_categories.is_empty() { vec![ToolCategory::All] } else { enabled_categories },
+            disabled_categories,
+        }
+    }
+
+    /// Check if a category is allowed
+    pub fn is_category_allowed(&self, category: &ToolCategory) -> bool {
+        // Check if category is disabled
+        if self.disabled_categories.contains(category) || self.disabled_categories.contains(&ToolCategory::All) {
+            return false;
+        }
+
+        // Check if category is enabled (or All is enabled)
+        if self.enabled_categories.contains(&ToolCategory::All) {
+            return true;
+        }
+
+        self.enabled_categories.contains(category)
+    }
+
+    /// Check if a tool can be executed (considering readonly mode)
+    pub fn can_execute(&self, category: &ToolCategory, is_modification: bool) -> Result<(), String> {
+        // Check category access
+        if !self.is_category_allowed(category) {
+            return Err(format!("Category {:?} is not enabled", category));
+        }
+
+        // Check readonly mode for modification tools
+        if self.readonly && is_modification {
+            return Err("Server is in readonly mode - modification tools are disabled".to_string());
+        }
+
+        Ok(())
+    }
+}
 
 /// TrueNAS MCP Server
 #[derive(Parser, Debug)]
@@ -29,6 +135,18 @@ struct Args {
     /// Port to bind to (for http/sse transports)
     #[arg(short, long, default_value = "3000")]
     port: u16,
+
+    /// Enable readonly mode (disables all modification tools)
+    #[arg(long)]
+    readonly: bool,
+
+    /// Enable specific tool categories (comma-separated: users,pools,datasets,shares,snapshots,iscsi,apps,system)
+    #[arg(long)]
+    enable_category: Vec<String>,
+
+    /// Disable specific tool categories (comma-separated)
+    #[arg(long)]
+    disable_category: Vec<String>,
 }
 
 #[tokio::main]
@@ -41,7 +159,31 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Build tool config from CLI args and environment
+    let env_config = ToolConfig::from_env();
+    let cli_enabled: Vec<ToolCategory> = args.enable_category
+        .iter()
+        .filter_map(|c| ToolCategory::from_str(c).ok())
+        .collect();
+    let cli_disabled: Vec<ToolCategory> = args.disable_category
+        .iter()
+        .filter_map(|c| ToolCategory::from_str(c).ok())
+        .collect();
+
+    let tool_config = ToolConfig {
+        readonly: args.readonly || env_config.readonly,
+        enabled_categories: if cli_enabled.is_empty() { env_config.enabled_categories } else { cli_enabled },
+        disabled_categories: if cli_disabled.is_empty() { env_config.disabled_categories } else { cli_disabled },
+    };
+
     info!("Starting TrueNAS MCP Server with {} transport", args.transport);
+    if tool_config.readonly {
+        info!("Readonly mode ENABLED - modification tools are disabled");
+    }
+    info!("Enabled categories: {:?}", tool_config.enabled_categories);
+    if !tool_config.disabled_categories.is_empty() {
+        info!("Disabled categories: {:?}", tool_config.disabled_categories);
+    }
 
     // Load configuration
     let config = TrueNasConfig::from_env()
@@ -49,8 +191,8 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Connecting to TrueNAS at: {}", config.server_url);
 
-    // Create the TrueNAS server handler
-    let server = Arc::new(TrueNasServerImpl::new(config)?);
+    // Create the TrueNAS server handler with tool config
+    let server = Arc::new(TrueNasServerImpl::new(config, tool_config)?);
 
     match args.transport.as_str() {
         "stdio" => {
@@ -74,13 +216,14 @@ async fn main() -> anyhow::Result<()> {
 #[derive(Clone)]
 struct TrueNasServerImpl {
     tools: Arc<TrueNasTools>,
+    tool_config: ToolConfig,
 }
 
 impl TrueNasServerImpl {
-    fn new(config: TrueNasConfig) -> anyhow::Result<Self> {
+    fn new(config: TrueNasConfig, tool_config: ToolConfig) -> anyhow::Result<Self> {
         let client = crate::client::TrueNasClient::new(config)?;
         let tools = Arc::new(TrueNasTools::new(client));
-        Ok(Self { tools })
+        Ok(Self { tools, tool_config })
     }
 
     fn get_server_info(&self) -> Value {
@@ -88,8 +231,52 @@ impl TrueNasServerImpl {
             "name": "truenas-master-mcp",
             "version": env!("CARGO_PKG_VERSION"),
             "description": "Official MCP server for TrueNAS API access",
-            "instructions": "This server provides access to TrueNAS SCALE/CORE management features including:\n- User management\n- Pool and dataset management\n- SMB and NFS share management\n- Snapshot management\n- iSCSI target management\n- Apps/Jails management\n- System information"
+            "readonly": self.tool_config.readonly,
+            "enabled_categories": format!("{:?}", self.tool_config.enabled_categories),
+            "instructions": "This server provides access to TrueNAS SCALE/CORE management features including:\n- User management\n- Pool and dataset management\n- SMB and NFS share management\n- Snapshot management\n- iSCSI target management\n- Apps/Jails management\n- System information\n\nUse --readonly flag or TRUENAS_READONLY=true to disable modification tools."
         })
+    }
+
+    /// Get tool category and whether it's a modification tool
+    fn get_tool_info(name: &str) -> (ToolCategory, bool) {
+        match name {
+            // Users - read operations
+            "list_users" | "get_user" | "get_user_by_username" => (ToolCategory::Users, false),
+            // Users - modification operations
+            "create_user" | "update_user" | "delete_user" => (ToolCategory::Users, true),
+            // Pools
+            "list_pools" | "get_pool_status" => (ToolCategory::Pools, false),
+            "scrub_pool" => (ToolCategory::Pools, true),
+            // Datasets
+            "list_datasets" | "get_dataset" => (ToolCategory::Datasets, false),
+            "create_dataset" | "delete_dataset" | "update_dataset" => (ToolCategory::Datasets, true),
+            // Shares
+            "list_smb_shares" | "list_nfs_exports" | "get_smb_share" | "get_nfs_export" => (ToolCategory::Shares, false),
+            "create_smb_share" | "delete_smb_share" | "create_nfs_export" | "delete_nfs_export" => (ToolCategory::Shares, true),
+            // Snapshots
+            "list_snapshots" | "get_snapshot" => (ToolCategory::Snapshots, false),
+            "create_snapshot" | "delete_snapshot" | "rollback_snapshot" | "clone_snapshot" => (ToolCategory::Snapshots, true),
+            // iSCSI
+            "list_iscsi_targets" | "list_iscsi_luns" | "list_iscsi_portals" => (ToolCategory::Iscsi, false),
+            "create_iscsi_target" | "delete_iscsi_target" | "create_iscsi_lun" | "delete_iscsi_lun" => (ToolCategory::Iscsi, true),
+            // Apps
+            "list_apps" | "get_app" | "get_app_config" | "list_app_catalogs" | "list_chart_releases" => (ToolCategory::Apps, false),
+            "create_app" | "update_app" | "delete_app" | "start_app" | "stop_app" | "restart_app" | "rollback_app" => (ToolCategory::Apps, true),
+            // Jails (CORE)
+            "list_jails" | "get_jail" | "list_jail_fstabs" => (ToolCategory::Apps, false),
+            "create_jail" | "update_jail" | "delete_jail" | "start_jail" | "stop_jail" | "clone_jail" => (ToolCategory::Apps, true),
+            // System
+            "get_system_info" | "get_system_version" | "get_alerts" => (ToolCategory::System, false),
+            "update_system" | "reboot" | "shutdown" => (ToolCategory::System, true),
+            // Default
+            _ => (ToolCategory::All, false),
+        }
+    }
+
+    /// Check if a tool can be executed
+    fn check_tool_access(&self, name: &str) -> Result<(), String> {
+        let (category, is_modification) = Self::get_tool_info(name);
+        self.tool_config.can_execute(&category, is_modification)
     }
 
     fn list_tools(&self) -> Value {
@@ -125,6 +312,10 @@ impl TrueNasServerImpl {
     }
 
     async fn call_tool(&self, name: &str, arguments: &Value) -> Result<Value, String> {
+        // Check tool access permissions
+        self.check_tool_access(name)
+            .map_err(|e| format!("Access denied: {}", e))?;
+
         match name {
             "list_users" => {
                 match self.tools.list_users().await {
