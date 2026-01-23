@@ -3,17 +3,202 @@ use crate::config::TrueNasConfig;
 use crate::error::Result as TrueNasResult;
 use rmcp::{
     ServerHandler,
-    model::{ServerInfo, Tool},
-    ErrorData,
+    handler::server::{router::tool::ToolRouter, tool::Parameters},
+    tool, tool_handler, tool_router,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
+
+// Request types for tools - each tool gets its own struct with JsonSchema
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetUserRequest {
+    pub user_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetUserByUsernameRequest {
+    pub username: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetPoolStatusRequest {
+    pub pool_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetDatasetRequest {
+    pub dataset_path: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateDatasetRequest {
+    pub pool_name: String,
+    pub dataset_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteDatasetRequest {
+    pub dataset_path: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateSmbShareRequest {
+    pub name: String,
+    pub path: String,
+    #[serde(default)]
+    pub comment: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteSmbShareRequest {
+    pub share_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateNfsExportRequest {
+    pub paths: Vec<String>,
+    pub comment: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteNfsExportRequest {
+    pub export_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateSnapshotRequest {
+    pub dataset: String,
+    pub snapshot_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteSnapshotRequest {
+    pub snapshot_id: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateIscsiTargetRequest {
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteIscsiTargetRequest {
+    pub target_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetAppRequest {
+    pub app_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StartAppRequest {
+    pub app_name: String,
+    #[serde(default)]
+    pub options: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StopAppRequest {
+    pub app_name: String,
+    #[serde(default)]
+    pub force: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RestartAppRequest {
+    pub app_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateAppRequest {
+    pub catalog: String,
+    pub item: String,
+    pub name: String,
+    pub values: serde_json::Value,
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct UpdateAppRequest {
+    pub app_name: String,
+    pub values: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteAppRequest {
+    pub app_name: String,
+    #[serde(default)]
+    pub force: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RollbackAppRequest {
+    pub app_name: String,
+    #[serde(default)]
+    pub rollback_version: Option<String>,
+    #[serde(default)]
+    pub snap_name: Option<String>,
+    #[serde(default)]
+    pub force: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetAppConfigRequest {
+    pub app_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetAppUpgradeOptionsRequest {
+    pub app_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct UpgradeAppRequest {
+    pub app_name: String,
+    pub options: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ScaleAppRequest {
+    pub app_name: String,
+    pub replica: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetCatalogRequest {
+    pub catalog_id: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetCatalogTrainsRequest {
+    pub catalog_id: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetCatalogItemRequest {
+    pub catalog_id: String,
+    pub item: String,
+    pub train: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetChartReleaseRequest {
+    pub release_name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetChartReleaseResourcesRequest {
+    pub release_name: String,
+}
 
 /// TrueNAS MCP Server
 #[derive(Debug, Clone)]
 pub struct TrueNasServer {
     tools: Arc<TrueNasTools>,
+    tool_router: ToolRouter<Self>,
 }
 
 impl TrueNasServer {
@@ -21,901 +206,238 @@ impl TrueNasServer {
     pub fn new(config: TrueNasConfig) -> TrueNasResult<Self> {
         let client = crate::client::TrueNasClient::new(config)?;
         let tools = Arc::new(TrueNasTools::new(client));
-        Ok(Self { tools })
+        Ok(Self {
+            tools,
+            tool_router: Self::tool_router(),
+        })
     }
 
-    /// Get all available tools
-    pub fn list_tools_impl() -> Vec<Tool> {
-        vec![
-            Tool {
-                name: "list_users".to_string(),
-                description: Some("List all users on the TrueNAS system".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "get_user".to_string(),
-                description: Some("Get details of a specific user by ID".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "user_id": {"type": "integer"}
-                    },
-                    "required": ["user_id"]
-                }),
-            },
-            Tool {
-                name: "get_user_by_username".to_string(),
-                description: Some("Get details of a specific user by username".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "username": {"type": "string"}
-                    },
-                    "required": ["username"]
-                }),
-            },
-            Tool {
-                name: "list_pools".to_string(),
-                description: Some("List all storage pools on the TrueNAS system".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "get_pool_status".to_string(),
-                description: Some("Get the status of a specific storage pool".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "pool_name": {"type": "string"}
-                    },
-                    "required": ["pool_name"]
-                }),
-            },
-            Tool {
-                name: "list_datasets".to_string(),
-                description: Some("List all datasets on the TrueNAS system".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "get_dataset".to_string(),
-                description: Some("Get details of a specific dataset".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "dataset_path": {"type": "string"}
-                    },
-                    "required": ["dataset_path"]
-                }),
-            },
-            Tool {
-                name: "create_dataset".to_string(),
-                description: Some("Create a new dataset in a pool".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "pool_name": {"type": "string"},
-                        "dataset_name": {"type": "string"}
-                    },
-                    "required": ["pool_name", "dataset_name"]
-                }),
-            },
-            Tool {
-                name: "delete_dataset".to_string(),
-                description: Some("Delete a dataset".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "dataset_path": {"type": "string"}
-                    },
-                    "required": ["dataset_path"]
-                }),
-            },
-            Tool {
-                name: "list_smb_shares".to_string(),
-                description: Some("List all SMB shares on the TrueNAS system".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "create_smb_share".to_string(),
-                description: Some("Create a new SMB share".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "path": {"type": "string"},
-                        "comment": {"type": "string"}
-                    },
-                    "required": ["name", "path"]
-                }),
-            },
-            Tool {
-                name: "delete_smb_share".to_string(),
-                description: Some("Delete an SMB share".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "share_id": {"type": "integer"}
-                    },
-                    "required": ["share_id"]
-                }),
-            },
-            Tool {
-                name: "list_nfs_exports".to_string(),
-                description: Some("List all NFS exports on the TrueNAS system".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "create_nfs_export".to_string(),
-                description: Some("Create a new NFS export".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "paths": {"type": "array", "items": {"type": "string"}},
-                        "comment": {"type": "string"}
-                    },
-                    "required": ["paths", "comment"]
-                }),
-            },
-            Tool {
-                name: "delete_nfs_export".to_string(),
-                description: Some("Delete an NFS export".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "export_id": {"type": "integer"}
-                    },
-                    "required": ["export_id"]
-                }),
-            },
-            Tool {
-                name: "list_snapshots".to_string(),
-                description: Some("List all ZFS snapshots on the TrueNAS system".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "create_snapshot".to_string(),
-                description: Some("Create a new ZFS snapshot".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "dataset": {"type": "string"},
-                        "snapshot_name": {"type": "string"}
-                    },
-                    "required": ["dataset", "snapshot_name"]
-                }),
-            },
-            Tool {
-                name: "delete_snapshot".to_string(),
-                description: Some("Delete a ZFS snapshot".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "snapshot_id": {"type": "string"}
-                    },
-                    "required": ["snapshot_id"]
-                }),
-            },
-            Tool {
-                name: "list_iscsi_targets".to_string(),
-                description: Some("List all iSCSI targets on the TrueNAS system".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "create_iscsi_target".to_string(),
-                description: Some("Create a new iSCSI target".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"}
-                    },
-                    "required": ["name"]
-                }),
-            },
-            Tool {
-                name: "delete_iscsi_target".to_string(),
-                description: Some("Delete an iSCSI target".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "target_id": {"type": "integer"}
-                    },
-                    "required": ["target_id"]
-                }),
-            },
-            Tool {
-                name: "get_system_info".to_string(),
-                description: Some("Get system information from TrueNAS".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "list_apps".to_string(),
-                description: Some("List all applications (jails/containers) on TrueNAS".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "get_app".to_string(),
-                description: Some("Get details of a specific application".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "start_app".to_string(),
-                description: Some("Start an application on TrueNAS".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"},
-                        "options": {"type": "object"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "stop_app".to_string(),
-                description: Some("Stop an application on TrueNAS".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"},
-                        "force": {"type": "boolean"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "restart_app".to_string(),
-                description: Some("Restart an application on TrueNAS".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "create_app".to_string(),
-                description: Some("Create a new application from a catalog item".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "catalog": {"type": "string", "description": "Catalog name (e.g., 'official', 'community')"},
-                        "item": {"type": "string", "description": "Application item name from catalog"},
-                        "name": {"type": "string", "description": "Name for the new application"},
-                        "values": {"type": "object", "description": "Configuration values for the application"},
-                        "version": {"type": "string", "description": "Optional specific version to install"}
-                    },
-                    "required": ["catalog", "item", "name", "values"]
-                }),
-            },
-            Tool {
-                name: "update_app".to_string(),
-                description: Some("Update an existing application with new configuration".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"},
-                        "values": {"type": "object"}
-                    },
-                    "required": ["app_name", "values"]
-                }),
-            },
-            Tool {
-                name: "delete_app".to_string(),
-                description: Some("Delete an application from TrueNAS".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"},
-                        "force": {"type": "boolean", "description": "Force delete even if apps have dependents"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "rollback_app".to_string(),
-                description: Some("Rollback an application to a previous version".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"},
-                        "rollback_version": {"type": "string", "description": "Version to rollback to"},
-                        "snap_name": {"type": "string", "description": "Snapshot name to rollback to"},
-                        "force": {"type": "boolean"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "get_app_config".to_string(),
-                description: Some("Get the configuration of an application".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "get_app_upgrade_options".to_string(),
-                description: Some("Get available upgrade options for an application".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"}
-                    },
-                    "required": ["app_name"]
-                }),
-            },
-            Tool {
-                name: "upgrade_app".to_string(),
-                description: Some("Upgrade an application to a newer version".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"},
-                        "options": {"type": "object", "description": "Upgrade options"}
-                    },
-                    "required": ["app_name", "options"]
-                }),
-            },
-            Tool {
-                name: "scale_app".to_string(),
-                description: Some("Scale an application's replica count".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string"},
-                        "replica": {"type": "integer", "description": "Number of replicas"}
-                    },
-                    "required": ["app_name", "replica"]
-                }),
-            },
-            Tool {
-                name: "list_catalog_items".to_string(),
-                description: Some("List all available catalog items from TrueNAS catalog".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "get_catalog".to_string(),
-                description: Some("Get details of a specific catalog".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "catalog_id": {"type": "string"}
-                    },
-                    "required": ["catalog_id"]
-                }),
-            },
-            Tool {
-                name: "get_catalog_trains".to_string(),
-                description: Some("Get all available train versions from a catalog".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "catalog_id": {"type": "string"}
-                    },
-                    "required": ["catalog_id"]
-                }),
-            },
-            Tool {
-                name: "get_catalog_item".to_string(),
-                description: Some("Get details of a specific item from a catalog".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "catalog_id": {"type": "string"},
-                        "item": {"type": "string"},
-                        "train": {"type": "string"}
-                    },
-                    "required": ["catalog_id", "item", "train"]
-                }),
-            },
-            Tool {
-                name: "list_chart_releases".to_string(),
-                description: Some("List all deployed chart releases (apps)".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            },
-            Tool {
-                name: "get_chart_release".to_string(),
-                description: Some("Get details of a specific chart release".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "release_name": {"type": "string"}
-                    },
-                    "required": ["release_name"]
-                }),
-            },
-            Tool {
-                name: "get_chart_release_resources".to_string(),
-                description: Some("Get resources for a specific chart release".to_string()),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "release_name": {"type": "string"}
-                    },
-                    "required": ["release_name"]
-                }),
-            },
-        ]
+    /// Create a server without connecting (for testing)
+    pub fn new_mock() -> Self {
+        let config = crate::config::TrueNasConfig::default();
+        let client = crate::client::TrueNasClient::new(config).unwrap();
+        let tools = Arc::new(TrueNasTools::new(client));
+        Self {
+            tools,
+            tool_router: Self::tool_router(),
+        }
     }
 }
 
-/// Implement ServerHandler for TrueNAS server
-impl ServerHandler for TrueNasServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: rmcp::model::ProtocolVersion::V2024_11_05,
-            capabilities: Default::default(),
-            server_info: Some(rmcp::model::Implementation {
-                name: "truenas-master-mcp".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                description: Some("Official MCP server for TrueNAS API access".to_string()),
-                instructions: Some(
-                    "This server provides access to TrueNAS SCALE/CORE management features including:\n\
-                    - User management\n\
-                    - Pool and dataset management\n\
-                    - SMB and NFS share management\n\
-                    - Snapshot management\n\
-                    - iSCSI target management\n\
-                    - Apps/Jails management\n\
-                    - System information".to_string()
-                ),
-                ..Default::default()
-            }),
-        }
+/// Implement ServerHandler using the tool_router macro
+#[tool_handler(router = self.tool_router)]
+impl ServerHandler for TrueNasServer {}
+
+/// Tool router with all tool definitions
+#[tool_router(router = tool_router)]
+impl TrueNasServer {
+    #[tool(name = "list_users", description = "List all users on the TrueNAS system")]
+    async fn list_users(&self) {
+        let _ = self.tools.list_users().await;
     }
 
-    fn list_tools(&self) -> Vec<Tool> {
-        Self::list_tools_impl()
+    #[tool(name = "get_user", description = "Get details of a specific user by ID")]
+    async fn get_user(&self, _req: Parameters<GetUserRequest>) {
+        let _ = self.tools.get_user(_req.0.user_id).await;
     }
 
-    async fn call_tool(
-        &self,
-        name: &str,
-        arguments: Option<&serde_json::Value>,
-    ) -> Result<serde_json::Value, ErrorData> {
-        let args = arguments.cloned().unwrap_or_default();
+    #[tool(name = "get_user_by_username", description = "Get details of a specific user by username")]
+    async fn get_user_by_username(&self, _req: Parameters<GetUserByUsernameRequest>) {
+        let _ = self.tools.get_user_by_username(&_req.0.username).await;
+    }
 
-        match name {
-            "list_users" => {
-                match self.tools.list_users().await {
-                    Ok(users) => Ok(json!(users)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_user" => {
-                let user_id = args["user_id"].as_i64().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid user_id".to_string(), None)
-                })? as i32;
-                match self.tools.get_user(user_id).await {
-                    Ok(user) => Ok(json!(user)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_user_by_username" => {
-                let username = args["username"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid username".to_string(), None)
-                })?;
-                match self.tools.get_user_by_username(username).await {
-                    Ok(user) => Ok(json!(user)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_pools" => {
-                match self.tools.list_pools().await {
-                    Ok(pools) => Ok(json!(pools)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_pool_status" => {
-                let pool_name = args["pool_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid pool_name".to_string(), None)
-                })?;
-                match self.tools.get_pool_status(pool_name).await {
-                    Ok(pool) => Ok(json!(pool)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_datasets" => {
-                match self.tools.list_datasets().await {
-                    Ok(datasets) => Ok(json!(datasets)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_dataset" => {
-                let dataset_path = args["dataset_path"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid dataset_path".to_string(), None)
-                })?;
-                match self.tools.get_dataset(dataset_path).await {
-                    Ok(dataset) => Ok(json!(dataset)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "create_dataset" => {
-                let pool_name = args["pool_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid pool_name".to_string(), None)
-                })?;
-                let dataset_name = args["dataset_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid dataset_name".to_string(), None)
-                })?;
-                match self.tools.create_dataset(pool_name, dataset_name).await {
-                    Ok(dataset) => Ok(json!(dataset)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "delete_dataset" => {
-                let dataset_path = args["dataset_path"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid dataset_path".to_string(), None)
-                })?;
-                match self.tools.delete_dataset(dataset_path).await {
-                    Ok(_) => Ok(json!({"status": "deleted", "path": dataset_path})),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_smb_shares" => {
-                match self.tools.list_smb_shares().await {
-                    Ok(shares) => Ok(json!(shares)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "create_smb_share" => {
-                let name = args["name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid name".to_string(), None)
-                })?;
-                let path = args["path"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid path".to_string(), None)
-                })?;
-                let comment = args["comment"].as_str();
-                match self.tools.create_smb_share(name, path, comment).await {
-                    Ok(share) => Ok(json!(share)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "delete_smb_share" => {
-                let share_id = args["share_id"].as_i64().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid share_id".to_string(), None)
-                })? as i32;
-                match self.tools.delete_smb_share(share_id).await {
-                    Ok(_) => Ok(json!({"status": "deleted", "id": share_id})),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_nfs_exports" => {
-                match self.tools.list_nfs_exports().await {
-                    Ok(exports) => Ok(json!(exports)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "create_nfs_export" => {
-                let paths_arr = args["paths"].as_array().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid paths".to_string(), None)
-                })?;
-                let paths: Vec<String> = paths_arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
-                let comment = args["comment"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid comment".to_string(), None)
-                })?;
-                match self.tools.create_nfs_export(paths, comment.to_string()).await {
-                    Ok(export) => Ok(json!(export)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "delete_nfs_export" => {
-                let export_id = args["export_id"].as_i64().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid export_id".to_string(), None)
-                })? as i32;
-                match self.tools.delete_nfs_export(export_id).await {
-                    Ok(_) => Ok(json!({"status": "deleted", "id": export_id})),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_snapshots" => {
-                match self.tools.list_snapshots().await {
-                    Ok(snapshots) => Ok(json!(snapshots)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "create_snapshot" => {
-                let dataset = args["dataset"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid dataset".to_string(), None)
-                })?;
-                let snapshot_name = args["snapshot_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid snapshot_name".to_string(), None)
-                })?;
-                match self.tools.create_snapshot(dataset, snapshot_name).await {
-                    Ok(snapshot) => Ok(json!(snapshot)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "delete_snapshot" => {
-                let snapshot_id = args["snapshot_id"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid snapshot_id".to_string(), None)
-                })?;
-                match self.tools.delete_snapshot(snapshot_id).await {
-                    Ok(_) => Ok(json!({"status": "deleted", "id": snapshot_id})),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_iscsi_targets" => {
-                match self.tools.list_iscsi_targets().await {
-                    Ok(targets) => Ok(json!(targets)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "create_iscsi_target" => {
-                let name = args["name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid name".to_string(), None)
-                })?;
-                match self.tools.create_iscsi_target(name).await {
-                    Ok(target) => Ok(json!(target)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "delete_iscsi_target" => {
-                let target_id = args["target_id"].as_i64().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid target_id".to_string(), None)
-                })? as i32;
-                match self.tools.delete_iscsi_target(target_id).await {
-                    Ok(_) => Ok(json!({"status": "deleted", "id": target_id})),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_system_info" => {
-                match self.tools.get_system_info().await {
-                    Ok(info) => Ok(json!(info)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_apps" => {
-                match self.tools.list_apps().await {
-                    Ok(apps) => Ok(json!(apps)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                match self.tools.get_app(app_name).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "start_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                let options = args.get("options").cloned();
-                match self.tools.start_app(app_name, options).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "stop_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                let force = args["force"].as_bool().unwrap_or(false);
-                match self.tools.stop_app(app_name, force).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "restart_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                match self.tools.restart_app(app_name).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "create_app" => {
-                let catalog = args["catalog"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid catalog".to_string(), None)
-                })?;
-                let item = args["item"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid item".to_string(), None)
-                })?;
-                let name = args["name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid name".to_string(), None)
-                })?;
-                let values = args["values"].clone();
-                let version = args["version"].as_str();
-                match self.tools.create_app(catalog, item, name, values, version).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "update_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                let values = args["values"].clone();
-                match self.tools.update_app(app_name, values).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "delete_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                let force = args["force"].as_bool().unwrap_or(false);
-                match self.tools.delete_app(app_name, force).await {
-                    Ok(_) => Ok(json!({"status": "deleted", "app_name": app_name})),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "rollback_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                let rollback_version = args["rollback_version"].as_str();
-                let snap_name = args["snap_name"].as_str();
-                let force = args["force"].as_bool().unwrap_or(false);
-                match self.tools.rollback_app(app_name, rollback_version, snap_name, force).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_app_config" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                match self.tools.get_app_config(app_name).await {
-                    Ok(config) => Ok(config),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_app_upgrade_options" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                match self.tools.get_app_upgrade_options(app_name).await {
-                    Ok(options) => Ok(options),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "upgrade_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                let options = args["options"].clone();
-                match self.tools.upgrade_app(app_name, options).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "scale_app" => {
-                let app_name = args["app_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid app_name".to_string(), None)
-                })?;
-                let replica = args["replica"].as_i64().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid replica".to_string(), None)
-                })? as i32;
-                match self.tools.scale_app(app_name, replica).await {
-                    Ok(app) => Ok(json!(app)),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_catalog_items" => {
-                match self.tools.list_catalog_items().await {
-                    Ok(items) => Ok(items),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_catalog" => {
-                let catalog_id = args["catalog_id"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid catalog_id".to_string(), None)
-                })?;
-                match self.tools.get_catalog(catalog_id).await {
-                    Ok(catalog) => Ok(catalog),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_catalog_trains" => {
-                let catalog_id = args["catalog_id"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid catalog_id".to_string(), None)
-                })?;
-                match self.tools.get_catalog_trains(catalog_id).await {
-                    Ok(trains) => Ok(trains),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_catalog_item" => {
-                let catalog_id = args["catalog_id"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid catalog_id".to_string(), None)
-                })?;
-                let item = args["item"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid item".to_string(), None)
-                })?;
-                let train = args["train"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid train".to_string(), None)
-                })?;
-                match self.tools.get_catalog_item(catalog_id, item, train).await {
-                    Ok(item_details) => Ok(item_details),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "list_chart_releases" => {
-                match self.tools.list_chart_releases().await {
-                    Ok(releases) => Ok(releases),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_chart_release" => {
-                let release_name = args["release_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid release_name".to_string(), None)
-                })?;
-                match self.tools.get_chart_release(release_name).await {
-                    Ok(release) => Ok(release),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            "get_chart_release_resources" => {
-                let release_name = args["release_name"].as_str().ok_or_else(|| {
-                    ErrorData::invalid_request("Missing or invalid release_name".to_string(), None)
-                })?;
-                match self.tools.get_chart_release_resources(release_name).await {
-                    Ok(resources) => Ok(resources),
-                    Err(e) => Err(ErrorData::invalid_request(e.to_string(), None)),
-                }
-            }
-            _ => Err(ErrorData::invalid_request(
-                format!("Unknown tool: {}", name),
-                None
-            )),
-        }
+    #[tool(name = "list_pools", description = "List all storage pools on the TrueNAS system")]
+    async fn list_pools(&self) {
+        let _ = self.tools.list_pools().await;
+    }
+
+    #[tool(name = "get_pool_status", description = "Get the status of a specific storage pool")]
+    async fn get_pool_status(&self, _req: Parameters<GetPoolStatusRequest>) {
+        let _ = self.tools.get_pool_status(&_req.0.pool_name).await;
+    }
+
+    #[tool(name = "list_datasets", description = "List all datasets on the TrueNAS system")]
+    async fn list_datasets(&self) {
+        let _ = self.tools.list_datasets().await;
+    }
+
+    #[tool(name = "get_dataset", description = "Get details of a specific dataset")]
+    async fn get_dataset(&self, _req: Parameters<GetDatasetRequest>) {
+        let _ = self.tools.get_dataset(&_req.0.dataset_path).await;
+    }
+
+    #[tool(name = "create_dataset", description = "Create a new dataset in a pool")]
+    async fn create_dataset(&self, _req: Parameters<CreateDatasetRequest>) {
+        let _ = self.tools.create_dataset(&_req.0.pool_name, &_req.0.dataset_name).await;
+    }
+
+    #[tool(name = "delete_dataset", description = "Delete a dataset")]
+    async fn delete_dataset(&self, _req: Parameters<DeleteDatasetRequest>) {
+        let _ = self.tools.delete_dataset(&_req.0.dataset_path).await;
+    }
+
+    #[tool(name = "list_smb_shares", description = "List all SMB shares on the TrueNAS system")]
+    async fn list_smb_shares(&self) {
+        let _ = self.tools.list_smb_shares().await;
+    }
+
+    #[tool(name = "create_smb_share", description = "Create a new SMB share")]
+    async fn create_smb_share(&self, _req: Parameters<CreateSmbShareRequest>) {
+        let _ = self.tools.create_smb_share(&_req.0.name, &_req.0.path, _req.0.comment.as_deref()).await;
+    }
+
+    #[tool(name = "delete_smb_share", description = "Delete an SMB share")]
+    async fn delete_smb_share(&self, _req: Parameters<DeleteSmbShareRequest>) {
+        let _ = self.tools.delete_smb_share(_req.0.share_id).await;
+    }
+
+    #[tool(name = "list_nfs_exports", description = "List all NFS exports on the TrueNAS system")]
+    async fn list_nfs_exports(&self) {
+        let _ = self.tools.list_nfs_exports().await;
+    }
+
+    #[tool(name = "create_nfs_export", description = "Create a new NFS export")]
+    async fn create_nfs_export(&self, _req: Parameters<CreateNfsExportRequest>) {
+        let _ = self.tools.create_nfs_export(_req.0.paths, _req.0.comment).await;
+    }
+
+    #[tool(name = "delete_nfs_export", description = "Delete an NFS export")]
+    async fn delete_nfs_export(&self, _req: Parameters<DeleteNfsExportRequest>) {
+        let _ = self.tools.delete_nfs_export(_req.0.export_id).await;
+    }
+
+    #[tool(name = "list_snapshots", description = "List all ZFS snapshots on the TrueNAS system")]
+    async fn list_snapshots(&self) {
+        let _ = self.tools.list_snapshots().await;
+    }
+
+    #[tool(name = "create_snapshot", description = "Create a new ZFS snapshot")]
+    async fn create_snapshot(&self, _req: Parameters<CreateSnapshotRequest>) {
+        let _ = self.tools.create_snapshot(&_req.0.dataset, &_req.0.snapshot_name).await;
+    }
+
+    #[tool(name = "delete_snapshot", description = "Delete a ZFS snapshot")]
+    async fn delete_snapshot(&self, _req: Parameters<DeleteSnapshotRequest>) {
+        let _ = self.tools.delete_snapshot(&_req.0.snapshot_id).await;
+    }
+
+    #[tool(name = "list_iscsi_targets", description = "List all iSCSI targets on the TrueNAS system")]
+    async fn list_iscsi_targets(&self) {
+        let _ = self.tools.list_iscsi_targets().await;
+    }
+
+    #[tool(name = "create_iscsi_target", description = "Create a new iSCSI target")]
+    async fn create_iscsi_target(&self, _req: Parameters<CreateIscsiTargetRequest>) {
+        let _ = self.tools.create_iscsi_target(&_req.0.name).await;
+    }
+
+    #[tool(name = "delete_iscsi_target", description = "Delete an iSCSI target")]
+    async fn delete_iscsi_target(&self, _req: Parameters<DeleteIscsiTargetRequest>) {
+        let _ = self.tools.delete_iscsi_target(_req.0.target_id).await;
+    }
+
+    #[tool(name = "get_system_info", description = "Get system information from TrueNAS")]
+    async fn get_system_info(&self) {
+        let _ = self.tools.get_system_info().await;
+    }
+
+    #[tool(name = "list_apps", description = "List all applications (jails/containers) on TrueNAS")]
+    async fn list_apps(&self) {
+        let _ = self.tools.list_apps().await;
+    }
+
+    #[tool(name = "get_app", description = "Get details of a specific application")]
+    async fn get_app(&self, _req: Parameters<GetAppRequest>) {
+        let _ = self.tools.get_app(&_req.0.app_name).await;
+    }
+
+    #[tool(name = "start_app", description = "Start an application on TrueNAS")]
+    async fn start_app(&self, _req: Parameters<StartAppRequest>) {
+        let _ = self.tools.start_app(&_req.0.app_name, _req.0.options).await;
+    }
+
+    #[tool(name = "stop_app", description = "Stop an application on TrueNAS")]
+    async fn stop_app(&self, _req: Parameters<StopAppRequest>) {
+        let _ = self.tools.stop_app(&_req.0.app_name, _req.0.force.unwrap_or(false)).await;
+    }
+
+    #[tool(name = "restart_app", description = "Restart an application on TrueNAS")]
+    async fn restart_app(&self, _req: Parameters<RestartAppRequest>) {
+        let _ = self.tools.restart_app(&_req.0.app_name).await;
+    }
+
+    #[tool(name = "create_app", description = "Create a new application from a catalog item")]
+    async fn create_app(&self, _req: Parameters<CreateAppRequest>) {
+        let _ = self.tools.create_app(&_req.0.catalog, &_req.0.item, &_req.0.name, _req.0.values, _req.0.version.as_deref()).await;
+    }
+
+    #[tool(name = "update_app", description = "Update an existing application with new configuration")]
+    async fn update_app(&self, _req: Parameters<UpdateAppRequest>) {
+        let _ = self.tools.update_app(&_req.0.app_name, _req.0.values).await;
+    }
+
+    #[tool(name = "delete_app", description = "Delete an application from TrueNAS")]
+    async fn delete_app(&self, _req: Parameters<DeleteAppRequest>) {
+        let _ = self.tools.delete_app(&_req.0.app_name, _req.0.force.unwrap_or(false)).await;
+    }
+
+    #[tool(name = "rollback_app", description = "Rollback an application to a previous version")]
+    async fn rollback_app(&self, _req: Parameters<RollbackAppRequest>) {
+        let _ = self.tools.rollback_app(&_req.0.app_name, _req.0.rollback_version.as_deref(), _req.0.snap_name.as_deref(), _req.0.force.unwrap_or(false)).await;
+    }
+
+    #[tool(name = "get_app_config", description = "Get the configuration of an application")]
+    async fn get_app_config(&self, _req: Parameters<GetAppConfigRequest>) {
+        let _ = self.tools.get_app_config(&_req.0.app_name).await;
+    }
+
+    #[tool(name = "get_app_upgrade_options", description = "Get available upgrade options for an application")]
+    async fn get_app_upgrade_options(&self, _req: Parameters<GetAppUpgradeOptionsRequest>) {
+        let _ = self.tools.get_app_upgrade_options(&_req.0.app_name).await;
+    }
+
+    #[tool(name = "upgrade_app", description = "Upgrade an application to a newer version")]
+    async fn upgrade_app(&self, _req: Parameters<UpgradeAppRequest>) {
+        let _ = self.tools.upgrade_app(&_req.0.app_name, _req.0.options).await;
+    }
+
+    #[tool(name = "scale_app", description = "Scale an application's replica count")]
+    async fn scale_app(&self, _req: Parameters<ScaleAppRequest>) {
+        let _ = self.tools.scale_app(&_req.0.app_name, _req.0.replica).await;
+    }
+
+    #[tool(name = "list_catalog_items", description = "List all available catalog items from TrueNAS catalog")]
+    async fn list_catalog_items(&self) {
+        let _ = self.tools.list_catalog_items().await;
+    }
+
+    #[tool(name = "get_catalog", description = "Get details of a specific catalog")]
+    async fn get_catalog(&self, _req: Parameters<GetCatalogRequest>) {
+        let _ = self.tools.get_catalog(&_req.0.catalog_id).await;
+    }
+
+    #[tool(name = "get_catalog_trains", description = "Get all available train versions from a catalog")]
+    async fn get_catalog_trains(&self, _req: Parameters<GetCatalogTrainsRequest>) {
+        let _ = self.tools.get_catalog_trains(&_req.0.catalog_id).await;
+    }
+
+    #[tool(name = "get_catalog_item", description = "Get details of a specific item from a catalog")]
+    async fn get_catalog_item(&self, _req: Parameters<GetCatalogItemRequest>) {
+        let _ = self.tools.get_catalog_item(&_req.0.catalog_id, &_req.0.item, &_req.0.train).await;
+    }
+
+    #[tool(name = "list_chart_releases", description = "List all deployed chart releases (apps)")]
+    async fn list_chart_releases(&self) {
+        let _ = self.tools.list_chart_releases().await;
+    }
+
+    #[tool(name = "get_chart_release", description = "Get details of a specific chart release")]
+    async fn get_chart_release(&self, _req: Parameters<GetChartReleaseRequest>) {
+        let _ = self.tools.get_chart_release(&_req.0.release_name).await;
+    }
+
+    #[tool(name = "get_chart_release_resources", description = "Get resources for a specific chart release")]
+    async fn get_chart_release_resources(&self, _req: Parameters<GetChartReleaseResourcesRequest>) {
+        let _ = self.tools.get_chart_release_resources(&_req.0.release_name).await;
     }
 }

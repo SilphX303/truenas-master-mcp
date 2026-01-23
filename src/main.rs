@@ -1,7 +1,7 @@
-mod client;
-mod config;
-mod error;
-mod tools;
+pub mod client;
+pub mod config;
+pub mod error;
+pub mod tools;
 
 use crate::config::TrueNasConfig;
 use crate::tools::TrueNasTools;
@@ -136,6 +136,10 @@ struct Args {
     #[arg(short, long, default_value = "3000")]
     port: u16,
 
+    /// TrueNAS version: scale or core (default: scale)
+    #[arg(long, default_value = "scale")]
+    truenas_version: String,
+
     /// Enable readonly mode (disables all modification tools)
     #[arg(long)]
     readonly: bool,
@@ -176,7 +180,13 @@ async fn main() -> anyhow::Result<()> {
         disabled_categories: if cli_disabled.is_empty() { env_config.disabled_categories } else { cli_disabled },
     };
 
+    // Parse TrueNAS version
+    let truenas_version: crate::config::TrueNasVersion = args.truenas_version
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid TrueNAS version: {}. Use 'scale' or 'core'", e))?;
+
     info!("Starting TrueNAS MCP Server with {} transport", args.transport);
+    info!("TrueNAS version: {:?}", truenas_version);
     if tool_config.readonly {
         info!("Readonly mode ENABLED - modification tools are disabled");
     }
@@ -186,8 +196,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Load configuration
-    let config = TrueNasConfig::from_env()
+    let mut config = TrueNasConfig::from_env()
         .context("Failed to load configuration from environment")?;
+    config.version = truenas_version;
 
     info!("Connecting to TrueNAS at: {}", config.server_url);
 

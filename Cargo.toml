@@ -6,9 +6,14 @@ description = "Official MCP server for TrueNAS API access"
 license = "MIT"
 repository = "https://github.com/hongkongkiwi/truenas-master-mcp"
 
+[features]
+default = ["scale", "core"]
+scale = []
+core = []
+
 [dependencies]
 # Official MCP SDK
-rmcp = { version = "0.8", features = ["server"] }
+rmcp = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.42", features = ["full"] }
@@ -47,3 +52,13 @@ urlencoding = "2.1"
 clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
+# Testing frameworks
+rstest = "0.23"
+test-case = "3.3"
+async-trait = "0.1"
+
+# HTTP mocking
+mockito = "1.5"
+
+# Tokio test utilities
+tokio = { version = "1.42", features = ["test-util", "rt-multi-thread"] }

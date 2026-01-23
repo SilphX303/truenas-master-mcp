@@ -36,6 +36,11 @@ impl TrueNasClient {
         Ok(Self { client, config, base_url })
     }
 
+    /// Get the base URL
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     /// Get the authorization header value
     fn get_auth_header(&self) -> Option<String> {
         if let Some(api_key) = &self.config.api_key {

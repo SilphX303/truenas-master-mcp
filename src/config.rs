@@ -1,9 +1,34 @@
-use crate::error::{Result, TrueNasError};
+use crate::error::{TrueNasError};
+use crate::error::Result;
 use serde::Deserialize;
 use std::env;
 
+/// TrueNAS version type
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TrueNasVersion {
+    /// TrueNAS SCALE (Kubernetes-based apps)
+    #[default]
+    #[serde(alias = "scale", alias = "SCALE", alias = "sc", alias = "SC")]
+    Scale,
+    /// TrueNAS CORE (Jail-based apps)
+    #[serde(alias = "core", alias = "CORE", alias = "cr", alias = "CR")]
+    Core,
+}
+
+impl std::str::FromStr for TrueNasVersion {
+    type Err = &'static str;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "scale" | "sc" => Ok(TrueNasVersion::Scale),
+            "core" | "cr" => Ok(TrueNasVersion::Core),
+            _ => Err("Unknown TrueNAS version. Use 'scale' or 'core'"),
+        }
+    }
+}
+
 /// Configuration for the TrueNAS MCP server
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct TrueNasConfig {
     /// TrueNAS server URL (e.g., https://truenas.local)
     pub server_url: String,
@@ -17,6 +42,8 @@ pub struct TrueNasConfig {
     pub verify_ssl: bool,
     /// Request timeout in seconds
     pub timeout_secs: u64,
+    /// TrueNAS version (scale or core)
+    pub version: TrueNasVersion,
 }
 
 impl Default for TrueNasConfig {
@@ -35,7 +62,25 @@ impl Default for TrueNasConfig {
                 .unwrap_or_else(|_| "30".to_string())
                 .parse()
                 .unwrap_or(30),
+            version: env::var("TRUENAS_VERSION")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_default(),
         }
+    }
+}
+
+impl std::fmt::Debug for TrueNasConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrueNasConfig")
+            .field("server_url", &self.server_url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "***MASKED***"))
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "***MASKED***"))
+            .field("verify_ssl", &self.verify_ssl)
+            .field("timeout_secs", &self.timeout_secs)
+            .field("version", &self.version)
+            .finish()
     }
 }
 

@@ -48,6 +48,7 @@ The server is configured via environment variables:
 | `TRUENAS_PASSWORD` | No* | Password for basic auth | - |
 | `TRUENAS_VERIFY_SSL` | No | Verify SSL certificates | `true` |
 | `TRUENAS_TIMEOUT` | No | Request timeout in seconds | `30` |
+| `TRUENAS_VERSION` | No | TrueNAS version (scale/core) | `scale` |
 
 *Either `TRUENAS_API_KEY` OR both `TRUENAS_USERNAME` and `TRUENAS_PASSWORD` must be provided.
 
@@ -144,6 +145,30 @@ The server implements the standard Model Context Protocol. Refer to your MCP cli
 - `create_iscsi_target` - Create a new iSCSI target
 - `delete_iscsi_target` - Delete an iSCSI target
 
+### Application Management (SCALE)
+- `list_apps` - List all applications
+- `get_app` - Get details of a specific application
+- `start_app` - Start an application
+- `stop_app` - Stop an application
+- `restart_app` - Restart an application
+- `create_app` - Create a new application from catalog
+- `update_app` - Update an application configuration
+- `delete_app` - Delete an application
+- `rollback_app` - Rollback an application to previous version
+- `get_app_config` - Get application configuration
+- `get_app_upgrade_options` - Get available upgrade options
+- `upgrade_app` - Upgrade an application
+- `scale_app` - Scale application replica count
+
+### Catalogs and Chart Releases
+- `list_catalog_items` - List available catalog items
+- `get_catalog` - Get catalog details
+- `get_catalog_trains` - Get catalog train versions
+- `get_catalog_item` - Get specific catalog item details
+- `list_chart_releases` - List deployed chart releases
+- `get_chart_release` - Get chart release details
+- `get_chart_release_resources` - Get chart release resources
+
 ### System Information
 - `get_system_info` - Get system information
 
@@ -170,7 +195,12 @@ cargo build --release
 
 ## API Compatibility
 
-This server is designed for TrueNAS SCALE (and CORE with WebDAV API enabled). It uses the REST API v2.0 endpoints.
+This server supports both TrueNAS SCALE and TrueNAS CORE via the REST API v2.0. Set `TRUENAS_VERSION=scale` (default) for TrueNAS SCALE or `TRUENAS_VERSION=core` for TrueNAS CORE.
+
+The server provides 40+ tools covering:
+- User, pool, dataset, share, snapshot, and iSCSI management
+- Application management (SCALE only)
+- Catalog and chart release access
 
 ## License
 
