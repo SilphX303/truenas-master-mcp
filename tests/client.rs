@@ -1,9 +1,14 @@
 #![allow(clippy::unwrap_used)]
 
-use truenas_master_mcp::config::TrueNasConfig;
 use truenas_master_mcp::client::TrueNasClient;
+use truenas_master_mcp::config::TrueNasConfig;
 
-fn set_test_config(url: &str, api_key: Option<&str>, username: Option<&str>, password: Option<&str>) -> TrueNasConfig {
+fn set_test_config(
+    url: &str,
+    api_key: Option<&str>,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> TrueNasConfig {
     TrueNasConfig {
         server_url: url.to_string(),
         api_key: api_key.map(|s| s.to_string()),

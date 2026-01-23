@@ -7,9 +7,9 @@ use crate::config::TrueNasConfig;
 use crate::tools::TrueNasTools;
 use anyhow::Context;
 use clap::Parser;
-use serde_json::{json, Value};
-use std::sync::Arc;
+use serde_json::{Value, json};
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -73,17 +73,29 @@ impl ToolConfig {
 
         let enabled_categories: Vec<ToolCategory> = std::env::var("TRUENAS_ENABLED_CATEGORIES")
             .ok()
-            .map(|v| v.split(',').filter_map(|c| ToolCategory::from_str(c).ok()).collect())
+            .map(|v| {
+                v.split(',')
+                    .filter_map(|c| ToolCategory::from_str(c).ok())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let disabled_categories: Vec<ToolCategory> = std::env::var("TRUENAS_DISABLED_CATEGORIES")
             .ok()
-            .map(|v| v.split(',').filter_map(|c| ToolCategory::from_str(c).ok()).collect())
+            .map(|v| {
+                v.split(',')
+                    .filter_map(|c| ToolCategory::from_str(c).ok())
+                    .collect()
+            })
             .unwrap_or_default();
 
         Self {
             readonly,
-            enabled_categories: if enabled_categories.is_empty() { vec![ToolCategory::All] } else { enabled_categories },
+            enabled_categories: if enabled_categories.is_empty() {
+                vec![ToolCategory::All]
+            } else {
+                enabled_categories
+            },
             disabled_categories,
         }
     }
@@ -91,7 +103,9 @@ impl ToolConfig {
     /// Check if a category is allowed
     pub fn is_category_allowed(&self, category: &ToolCategory) -> bool {
         // Check if category is disabled
-        if self.disabled_categories.contains(category) || self.disabled_categories.contains(&ToolCategory::All) {
+        if self.disabled_categories.contains(category)
+            || self.disabled_categories.contains(&ToolCategory::All)
+        {
             return false;
         }
 
@@ -104,7 +118,11 @@ impl ToolConfig {
     }
 
     /// Check if a tool can be executed (considering readonly mode)
-    pub fn can_execute(&self, category: &ToolCategory, is_modification: bool) -> Result<(), String> {
+    pub fn can_execute(
+        &self,
+        category: &ToolCategory,
+        is_modification: bool,
+    ) -> Result<(), String> {
         // Check category access
         if !self.is_category_allowed(category) {
             return Err(format!("Category {:?} is not enabled", category));
@@ -151,41 +169,91 @@ struct Args {
     /// Disable specific tool categories (comma-separated)
     #[arg(long)]
     disable_category: Vec<String>,
+
+    /// Path to configuration file (JSON or YAML)
+    #[arg(short, long)]
+    config_file: Option<String>,
+
+    /// Log level: debug, info, warn, error
+    #[arg(short, long, default_value = "info")]
+    log_level: String,
+
+    /// Enable verbose output (equivalent to --log-level debug)
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Disable SSL certificate verification
+    #[arg(long)]
+    insecure_ssl: bool,
+
+    /// API request timeout in seconds
+    #[arg(long, default_value = "30")]
+    timeout: u64,
+
+    /// Enable JSON pretty printing for responses
+    #[arg(long)]
+    pretty: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
+    // Determine log level from args
+    let log_level = if args.verbose {
+        "debug".to_string()
+    } else {
+        args.log_level.clone()
+    };
+    let log_level = log_level
+        .parse::<tracing::Level>()
+        .unwrap_or(tracing::Level::INFO);
+
     // Initialize tracing
     tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+        .with(EnvFilter::from_default_env().add_directive(log_level.into()))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    info!("TrueNAS MCP Server v{}", env!("CARGO_PKG_VERSION"));
+
     // Build tool config from CLI args and environment
     let env_config = ToolConfig::from_env();
-    let cli_enabled: Vec<ToolCategory> = args.enable_category
+    let cli_enabled: Vec<ToolCategory> = args
+        .enable_category
         .iter()
         .filter_map(|c| ToolCategory::from_str(c).ok())
         .collect();
-    let cli_disabled: Vec<ToolCategory> = args.disable_category
+    let cli_disabled: Vec<ToolCategory> = args
+        .disable_category
         .iter()
         .filter_map(|c| ToolCategory::from_str(c).ok())
         .collect();
 
     let tool_config = ToolConfig {
         readonly: args.readonly || env_config.readonly,
-        enabled_categories: if cli_enabled.is_empty() { env_config.enabled_categories } else { cli_enabled },
-        disabled_categories: if cli_disabled.is_empty() { env_config.disabled_categories } else { cli_disabled },
+        enabled_categories: if cli_enabled.is_empty() {
+            env_config.enabled_categories
+        } else {
+            cli_enabled
+        },
+        disabled_categories: if cli_disabled.is_empty() {
+            env_config.disabled_categories
+        } else {
+            cli_disabled
+        },
     };
 
     // Parse TrueNAS version
-    let truenas_version: crate::config::TrueNasVersion = args.truenas_version
+    let truenas_version: crate::config::TrueNasVersion = args
+        .truenas_version
         .parse()
         .map_err(|e| anyhow::anyhow!("Invalid TrueNAS version: {}. Use 'scale' or 'core'", e))?;
 
-    info!("Starting TrueNAS MCP Server with {} transport", args.transport);
+    info!(
+        "Starting TrueNAS MCP Server with {} transport",
+        args.transport
+    );
     info!("TrueNAS version: {:?}", truenas_version);
     if tool_config.readonly {
         info!("Readonly mode ENABLED - modification tools are disabled");
@@ -196,9 +264,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Load configuration
-    let mut config = TrueNasConfig::from_env()
-        .context("Failed to load configuration from environment")?;
+    let mut config =
+        TrueNasConfig::from_env().context("Failed to load configuration from environment")?;
     config.version = truenas_version;
+
+    // Apply CLI overrides
+    if args.insecure_ssl {
+        config.verify_ssl = false;
+        info!("SSL verification DISABLED");
+    }
+    config.timeout_secs = args.timeout;
+    info!("API timeout: {} seconds", config.timeout_secs);
 
     info!("Connecting to TrueNAS at: {}", config.server_url);
 
@@ -216,7 +292,10 @@ async fn main() -> anyhow::Result<()> {
             run_sse(server, &args.host, args.port).await?;
         }
         _ => {
-            return Err(anyhow::anyhow!("Unknown transport type: {}. Use: stdio, http, or sse", args.transport));
+            return Err(anyhow::anyhow!(
+                "Unknown transport type: {}. Use: stdio, http, or sse",
+                args.transport
+            ));
         }
     }
 
@@ -260,24 +339,45 @@ impl TrueNasServerImpl {
             "scrub_pool" => (ToolCategory::Pools, true),
             // Datasets
             "list_datasets" | "get_dataset" => (ToolCategory::Datasets, false),
-            "create_dataset" | "delete_dataset" | "update_dataset" => (ToolCategory::Datasets, true),
+            "create_dataset" | "delete_dataset" | "update_dataset" => {
+                (ToolCategory::Datasets, true)
+            }
             // Shares
-            "list_smb_shares" | "list_nfs_exports" | "get_smb_share" | "get_nfs_export" => (ToolCategory::Shares, false),
-            "create_smb_share" | "delete_smb_share" | "create_nfs_export" | "delete_nfs_export" => (ToolCategory::Shares, true),
+            "list_smb_shares" | "list_nfs_exports" | "get_smb_share" | "get_nfs_export" => {
+                (ToolCategory::Shares, false)
+            }
+            "create_smb_share" | "delete_smb_share" | "create_nfs_export" | "delete_nfs_export" => {
+                (ToolCategory::Shares, true)
+            }
             // Snapshots
             "list_snapshots" | "get_snapshot" => (ToolCategory::Snapshots, false),
-            "create_snapshot" | "delete_snapshot" | "rollback_snapshot" | "clone_snapshot" => (ToolCategory::Snapshots, true),
+            "create_snapshot" | "delete_snapshot" | "rollback_snapshot" | "clone_snapshot" => {
+                (ToolCategory::Snapshots, true)
+            }
             // iSCSI
-            "list_iscsi_targets" | "list_iscsi_luns" | "list_iscsi_portals" => (ToolCategory::Iscsi, false),
-            "create_iscsi_target" | "delete_iscsi_target" | "create_iscsi_lun" | "delete_iscsi_lun" => (ToolCategory::Iscsi, true),
+            "list_iscsi_targets" | "list_iscsi_luns" | "list_iscsi_portals" => {
+                (ToolCategory::Iscsi, false)
+            }
+            "create_iscsi_target"
+            | "delete_iscsi_target"
+            | "create_iscsi_lun"
+            | "delete_iscsi_lun" => (ToolCategory::Iscsi, true),
             // Apps
-            "list_apps" | "get_app" | "get_app_config" | "list_app_catalogs" | "list_chart_releases" => (ToolCategory::Apps, false),
-            "create_app" | "update_app" | "delete_app" | "start_app" | "stop_app" | "restart_app" | "rollback_app" => (ToolCategory::Apps, true),
+            "list_apps"
+            | "get_app"
+            | "get_app_config"
+            | "list_app_catalogs"
+            | "list_chart_releases" => (ToolCategory::Apps, false),
+            "create_app" | "update_app" | "delete_app" | "start_app" | "stop_app"
+            | "restart_app" | "rollback_app" => (ToolCategory::Apps, true),
             // Jails (CORE)
             "list_jails" | "get_jail" | "list_jail_fstabs" => (ToolCategory::Apps, false),
-            "create_jail" | "update_jail" | "delete_jail" | "start_jail" | "stop_jail" | "clone_jail" => (ToolCategory::Apps, true),
+            "create_jail" | "update_jail" | "delete_jail" | "start_jail" | "stop_jail"
+            | "clone_jail" => (ToolCategory::Apps, true),
             // System
-            "get_system_info" | "get_system_version" | "get_alerts" => (ToolCategory::System, false),
+            "get_system_info" | "get_system_version" | "get_alerts" => {
+                (ToolCategory::System, false)
+            }
             "update_system" | "reboot" | "shutdown" => (ToolCategory::System, true),
             // Default
             _ => (ToolCategory::All, false),
@@ -328,12 +428,10 @@ impl TrueNasServerImpl {
             .map_err(|e| format!("Access denied: {}", e))?;
 
         match name {
-            "list_users" => {
-                match self.tools.list_users().await {
-                    Ok(users) => Ok(json!(users)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "list_users" => match self.tools.list_users().await {
+                Ok(users) => Ok(json!(users)),
+                Err(e) => Err(e.to_string()),
+            },
             "get_user" => {
                 let user_id = arguments["user_id"].as_i64().ok_or("Missing user_id")? as i32;
                 match self.tools.get_user(user_id).await {
@@ -348,12 +446,10 @@ impl TrueNasServerImpl {
                     Err(e) => Err(e.to_string()),
                 }
             }
-            "list_pools" => {
-                match self.tools.list_pools().await {
-                    Ok(pools) => Ok(json!(pools)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "list_pools" => match self.tools.list_pools().await {
+                Ok(pools) => Ok(json!(pools)),
+                Err(e) => Err(e.to_string()),
+            },
             "get_pool_status" => {
                 let pool_name = arguments["pool_name"].as_str().ok_or("Missing pool_name")?;
                 match self.tools.get_pool_status(pool_name).await {
@@ -361,14 +457,14 @@ impl TrueNasServerImpl {
                     Err(e) => Err(e.to_string()),
                 }
             }
-            "list_datasets" => {
-                match self.tools.list_datasets().await {
-                    Ok(datasets) => Ok(json!(datasets)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "list_datasets" => match self.tools.list_datasets().await {
+                Ok(datasets) => Ok(json!(datasets)),
+                Err(e) => Err(e.to_string()),
+            },
             "get_dataset" => {
-                let dataset_path = arguments["dataset_path"].as_str().ok_or("Missing dataset_path")?;
+                let dataset_path = arguments["dataset_path"]
+                    .as_str()
+                    .ok_or("Missing dataset_path")?;
                 match self.tools.get_dataset(dataset_path).await {
                     Ok(dataset) => Ok(json!(dataset)),
                     Err(e) => Err(e.to_string()),
@@ -376,25 +472,27 @@ impl TrueNasServerImpl {
             }
             "create_dataset" => {
                 let pool_name = arguments["pool_name"].as_str().ok_or("Missing pool_name")?;
-                let dataset_name = arguments["dataset_name"].as_str().ok_or("Missing dataset_name")?;
+                let dataset_name = arguments["dataset_name"]
+                    .as_str()
+                    .ok_or("Missing dataset_name")?;
                 match self.tools.create_dataset(pool_name, dataset_name).await {
                     Ok(dataset) => Ok(json!(dataset)),
                     Err(e) => Err(e.to_string()),
                 }
             }
             "delete_dataset" => {
-                let dataset_path = arguments["dataset_path"].as_str().ok_or("Missing dataset_path")?;
+                let dataset_path = arguments["dataset_path"]
+                    .as_str()
+                    .ok_or("Missing dataset_path")?;
                 match self.tools.delete_dataset(dataset_path).await {
                     Ok(_) => Ok(json!({"status": "deleted", "path": dataset_path})),
                     Err(e) => Err(e.to_string()),
                 }
             }
-            "list_smb_shares" => {
-                match self.tools.list_smb_shares().await {
-                    Ok(shares) => Ok(json!(shares)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "list_smb_shares" => match self.tools.list_smb_shares().await {
+                Ok(shares) => Ok(json!(shares)),
+                Err(e) => Err(e.to_string()),
+            },
             "create_smb_share" => {
                 let name = arguments["name"].as_str().ok_or("Missing name")?;
                 let path = arguments["path"].as_str().ok_or("Missing path")?;
@@ -411,17 +509,22 @@ impl TrueNasServerImpl {
                     Err(e) => Err(e.to_string()),
                 }
             }
-            "list_nfs_exports" => {
-                match self.tools.list_nfs_exports().await {
-                    Ok(exports) => Ok(json!(exports)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "list_nfs_exports" => match self.tools.list_nfs_exports().await {
+                Ok(exports) => Ok(json!(exports)),
+                Err(e) => Err(e.to_string()),
+            },
             "create_nfs_export" => {
                 let paths_arr = arguments["paths"].as_array().ok_or("Missing paths")?;
-                let paths: Vec<String> = paths_arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                let paths: Vec<String> = paths_arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
                 let comment = arguments["comment"].as_str().ok_or("Missing comment")?;
-                match self.tools.create_nfs_export(paths, comment.to_string()).await {
+                match self
+                    .tools
+                    .create_nfs_export(paths, comment.to_string())
+                    .await
+                {
                     Ok(export) => Ok(json!(export)),
                     Err(e) => Err(e.to_string()),
                 }
@@ -433,33 +536,33 @@ impl TrueNasServerImpl {
                     Err(e) => Err(e.to_string()),
                 }
             }
-            "list_snapshots" => {
-                match self.tools.list_snapshots().await {
-                    Ok(snapshots) => Ok(json!(snapshots)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "list_snapshots" => match self.tools.list_snapshots().await {
+                Ok(snapshots) => Ok(json!(snapshots)),
+                Err(e) => Err(e.to_string()),
+            },
             "create_snapshot" => {
                 let dataset = arguments["dataset"].as_str().ok_or("Missing dataset")?;
-                let snapshot_name = arguments["snapshot_name"].as_str().ok_or("Missing snapshot_name")?;
+                let snapshot_name = arguments["snapshot_name"]
+                    .as_str()
+                    .ok_or("Missing snapshot_name")?;
                 match self.tools.create_snapshot(dataset, snapshot_name).await {
                     Ok(snapshot) => Ok(json!(snapshot)),
                     Err(e) => Err(e.to_string()),
                 }
             }
             "delete_snapshot" => {
-                let snapshot_id = arguments["snapshot_id"].as_str().ok_or("Missing snapshot_id")?;
+                let snapshot_id = arguments["snapshot_id"]
+                    .as_str()
+                    .ok_or("Missing snapshot_id")?;
                 match self.tools.delete_snapshot(snapshot_id).await {
                     Ok(_) => Ok(json!({"status": "deleted", "id": snapshot_id})),
                     Err(e) => Err(e.to_string()),
                 }
             }
-            "list_iscsi_targets" => {
-                match self.tools.list_iscsi_targets().await {
-                    Ok(targets) => Ok(json!(targets)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "list_iscsi_targets" => match self.tools.list_iscsi_targets().await {
+                Ok(targets) => Ok(json!(targets)),
+                Err(e) => Err(e.to_string()),
+            },
             "create_iscsi_target" => {
                 let name = arguments["name"].as_str().ok_or("Missing name")?;
                 match self.tools.create_iscsi_target(name).await {
@@ -474,18 +577,14 @@ impl TrueNasServerImpl {
                     Err(e) => Err(e.to_string()),
                 }
             }
-            "get_system_info" => {
-                match self.tools.get_system_info().await {
-                    Ok(info) => Ok(json!(info)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
-            "list_apps" => {
-                match self.tools.list_apps().await {
-                    Ok(apps) => Ok(json!(apps)),
-                    Err(e) => Err(e.to_string()),
-                }
-            }
+            "get_system_info" => match self.tools.get_system_info().await {
+                Ok(info) => Ok(json!(info)),
+                Err(e) => Err(e.to_string()),
+            },
+            "list_apps" => match self.tools.list_apps().await {
+                Ok(apps) => Ok(json!(apps)),
+                Err(e) => Err(e.to_string()),
+            },
             "get_app" => {
                 let app_name = arguments["app_name"].as_str().ok_or("Missing app_name")?;
                 match self.tools.get_app(app_name).await {
@@ -537,8 +636,8 @@ async fn run_stdio(server: Arc<TrueNasServerImpl>) -> anyhow::Result<()> {
             continue;
         }
 
-        let request: Value = serde_json::from_str(&line)
-            .context("Failed to parse JSON-RPC request")?;
+        let request: Value =
+            serde_json::from_str(&line).context("Failed to parse JSON-RPC request")?;
 
         let response = handle_request(&server, request).await?;
 
@@ -573,7 +672,9 @@ async fn handle_request(server: &TrueNasServerImpl, request: Value) -> anyhow::R
             let name = params["name"].as_str().context("Missing tool name")?;
             let empty_args = json!({});
             let arguments = params.get("arguments").unwrap_or(&empty_args);
-            server.call_tool(name, arguments).await
+            server
+                .call_tool(name, arguments)
+                .await
                 .map_err(|e| anyhow::anyhow!("Tool error: {}", e))?
         }
         _ => return Err(anyhow::anyhow!("Unknown method: {}", method)),
@@ -583,7 +684,8 @@ async fn handle_request(server: &TrueNasServerImpl, request: Value) -> anyhow::R
         "jsonrpc": "2.0",
         "id": id,
         "result": result
-    }).to_string())
+    })
+    .to_string())
 }
 
 /// Run server with HTTP transport (placeholder)
@@ -592,17 +694,24 @@ async fn run_http(_server: Arc<TrueNasServerImpl>, host: &str, port: u16) -> any
 
     // Build Axum app
     let app = axum::Router::new()
-        .route("/", axum::routing::get(|| async { axum::Json(json!({"status": "TrueNAS MCP Server running"})) }))
+        .route(
+            "/",
+            axum::routing::get(|| async {
+                axum::Json(json!({"status": "TrueNAS MCP Server running"}))
+            }),
+        )
         .route("/mcp", axum::routing::post(mcp_http_handler))
         .layer(tower_http::cors::CorsLayer::permissive());
 
     let addr = format!("{}:{}", host, port);
-    let listener = tokio::net::TcpListener::bind(&addr).await
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
         .context(format!("Failed to bind to {}", addr))?;
 
     info!("TrueNAS HTTP MCP server listening on {}", addr);
 
-    axum::serve(listener, app).await
+    axum::serve(listener, app)
+        .await
         .context("HTTP server error")?;
 
     Ok(())
@@ -631,12 +740,14 @@ async fn run_sse(_server: Arc<TrueNasServerImpl>, host: &str, port: u16) -> anyh
         .layer(tower_http::cors::CorsLayer::permissive());
 
     let addr = format!("{}:{}", host, port);
-    let listener = tokio::net::TcpListener::bind(&addr).await
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
         .context(format!("Failed to bind to {}", addr))?;
 
     info!("TrueNAS SSE MCP server listening on {}", addr);
 
-    axum::serve(listener, app).await
+    axum::serve(listener, app)
+        .await
         .context("SSE server error")?;
 
     Ok(())
@@ -654,7 +765,7 @@ async fn sse_handler() -> impl axum::response::IntoResponse {
     Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
             .interval(std::time::Duration::from_secs(15))
-            .text("keepalive")
+            .text("keepalive"),
     )
 }
 

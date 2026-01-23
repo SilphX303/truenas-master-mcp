@@ -2,11 +2,9 @@
 
 use serde_json::json;
 use truenas_master_mcp::tools::{
-    User, Pool, Dataset, SmbShare, NfsExport, Snapshot,
-    IscsiTarget, SystemInfo, AppInfo, Group, Vm, NetworkInterface,
-    NetworkRoute, DnsConfig, ReplicationTask, CloudSyncTask,
-    CloudCredential, Service, Alert, UpdateCheck, Certificate,
-    KubernetesStatus, Jail, EnclosureInfo,
+    Alert, AppInfo, Certificate, CloudCredential, CloudSyncTask, Dataset, DnsConfig, EnclosureInfo,
+    Group, IscsiTarget, Jail, KubernetesStatus, NetworkInterface, NetworkRoute, NfsExport, Pool,
+    ReplicationTask, Service, SmbShare, Snapshot, SystemInfo, UpdateCheck, User, Vm,
 };
 
 mod serialization_tests {

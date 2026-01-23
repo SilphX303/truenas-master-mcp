@@ -6,14 +6,21 @@ A Model Context Protocol (MCP) server for managing TrueNAS systems through AI as
 
 This MCP server provides access to TrueNAS API functionality including:
 
-- **User Management**: List, get users by ID or username
+- **User Management**: List, get, create, update, delete users and groups
 - **Pool Management**: List pools, get pool status
 - **Dataset Management**: List, create, get, delete datasets
 - **SMB Shares**: List, create, delete SMB shares
 - **NFS Exports**: List, create, delete NFS exports
 - **ZFS Snapshots**: List, create, delete snapshots
 - **iSCSI Targets**: List, create, delete iSCSI targets
-- **System Information**: Get system info including version, hostname, uptime
+- **System Information**: Get system info, alerts, updates
+- **VM Management**: List, start, stop, restart virtual machines
+- **Network Management**: List interfaces, routes, DNS configuration
+- **Service Management**: List, start, stop, restart services
+- **Disk Management**: List disks and get disk details
+- **Certificate Management**: List certificates
+- **Replication**: List and run replication tasks
+- **Cloud Sync**: List and run cloud sync tasks
 
 ## Installation
 
@@ -51,6 +58,24 @@ The server is configured via environment variables:
 | `TRUENAS_VERSION` | No | TrueNAS version (scale/core) | `scale` |
 
 *Either `TRUENAS_API_KEY` OR both `TRUENAS_USERNAME` and `TRUENAS_PASSWORD` must be provided.
+
+### CLI Options
+
+The server also supports command-line options:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-t, --transport` | Transport type: stdio, http, sse | stdio |
+| `-h, --host` | Host to bind to (http/sse only) | 127.0.0.1 |
+| `-p, --port` | Port to bind to (http/sse only) | 3000 |
+| `--truenas-version` | TrueNAS version: scale or core | scale |
+| `--readonly` | Enable readonly mode | false |
+| `-c, --config-file` | Path to config file (JSON/YAML) | - |
+| `-l, --log-level` | Log level: debug, info, warn, error | info |
+| `-v, --verbose` | Enable verbose output | false |
+| `--insecure-ssl` | Disable SSL certificate verification | false |
+| `--timeout` | API request timeout in seconds | 30 |
+| `--pretty` | Enable JSON pretty printing | false |
 
 ### Example .env file
 
@@ -171,6 +196,56 @@ The server implements the standard Model Context Protocol. Refer to your MCP cli
 
 ### System Information
 - `get_system_info` - Get system information
+- `get_alerts` - Get system alerts
+- `check_for_updates` - Check for system updates
+- `reboot_system` - Reboot the system
+- `shutdown_system` - Shutdown the system
+
+### Group Management
+- `list_groups` - List all groups
+- `get_group` - Get group by ID
+- `get_group_by_name` - Get group by name
+- `create_group` - Create a new group
+- `delete_group` - Delete a group
+
+### VM Management
+- `list_vms` - List all virtual machines
+- `get_vm` - Get VM details by ID
+- `start_vm` - Start a virtual machine
+- `stop_vm` - Stop a virtual machine
+- `restart_vm` - Restart a virtual machine
+
+### Network Management
+- `list_interfaces` - List all network interfaces
+- `list_routes` - List all network routes
+- `get_dns` - Get DNS configuration
+
+### Service Management
+- `list_services` - List all services
+- `get_service` - Get service details
+- `start_service` - Start a service
+- `stop_service` - Stop a service
+- `restart_service` - Restart a service
+
+### Disk Management
+- `list_disks` - List all disks
+- `get_disk` - Get disk details by name
+
+### Certificate Management
+- `list_certificates` - List all certificates
+- `get_certificate` - Get certificate details by ID
+
+### Replication
+- `list_replication_tasks` - List all replication tasks
+- `run_replication_task` - Run a replication task
+
+### Cloud Sync
+- `list_cloudsync_tasks` - List all cloud sync tasks
+- `run_cloudsync_task` - Run a cloud sync task
+
+### Other
+- `get_enclosure` - Get enclosure information
+- `get_support` - Get support information
 
 ## Development
 
@@ -197,10 +272,14 @@ cargo build --release
 
 This server supports both TrueNAS SCALE and TrueNAS CORE via the REST API v2.0. Set `TRUENAS_VERSION=scale` (default) for TrueNAS SCALE or `TRUENAS_VERSION=core` for TrueNAS CORE.
 
-The server provides 40+ tools covering:
-- User, pool, dataset, share, snapshot, and iSCSI management
+The server provides 80+ tools covering:
+- User and group management
+- Pool, dataset, share, snapshot, and iSCSI management
+- VM, network, and service management
 - Application management (SCALE only)
 - Catalog and chart release access
+- Replication and cloud sync
+- Disk and certificate management
 
 ## License
 

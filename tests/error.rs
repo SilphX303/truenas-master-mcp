@@ -1,4 +1,4 @@
-use truenas_master_mcp::error::{TrueNasError, Result};
+use truenas_master_mcp::error::{Result, TrueNasError};
 
 #[test]
 fn test_api_error_format() {
@@ -48,7 +48,9 @@ fn test_not_found_error_format() {
 
 #[test]
 fn test_serialization_error_format() {
-    let err = TrueNasError::SerializationError(serde_json::from_str::<serde_json::Value>("invalid").unwrap_err());
+    let err = TrueNasError::SerializationError(
+        serde_json::from_str::<serde_json::Value>("invalid").unwrap_err(),
+    );
     let msg = err.to_string();
     assert!(msg.contains("Serialization error"));
 }
@@ -143,4 +145,126 @@ fn test_various_status_codes() {
         let msg = err.to_string();
         assert!(msg.contains(&format!("{}", status)));
     }
+}
+
+// === New Error Type Tests ===
+
+#[test]
+fn test_validation_error_format() {
+    let err = TrueNasError::ValidationError("Invalid input format".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("Validation error"));
+    assert!(msg.contains("Invalid input format"));
+}
+
+#[test]
+fn test_permission_denied_error_format() {
+    let err = TrueNasError::PermissionDenied("Cannot modify system config".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("Permission denied"));
+    assert!(msg.contains("Cannot modify system config"));
+}
+
+#[test]
+fn test_already_exists_error_format() {
+    let err = TrueNasError::AlreadyExists("User 'admin' already exists".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("already exists"));
+    assert!(msg.contains("User 'admin'"));
+}
+
+#[test]
+fn test_timeout_error_format() {
+    let err = TrueNasError::TimeoutError("Pool scrub took too long".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("timed out"));
+    assert!(msg.contains("Pool scrub took too long"));
+}
+
+#[test]
+fn test_pool_error_format() {
+    let err = TrueNasError::PoolError("Pool is resilvering".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("Pool error"));
+    assert!(msg.contains("Pool is resilvering"));
+}
+
+#[test]
+fn test_dataset_error_format() {
+    let err = TrueNasError::DatasetError("Quota exceeded".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("Dataset error"));
+    assert!(msg.contains("Quota exceeded"));
+}
+
+#[test]
+fn test_vm_error_format() {
+    let err = TrueNasError::VmError("VM not running".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("VM error"));
+    assert!(msg.contains("VM not running"));
+}
+
+#[test]
+fn test_service_error_format() {
+    let err = TrueNasError::ServiceError("Service stopped".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("Service error"));
+    assert!(msg.contains("Service stopped"));
+}
+
+#[test]
+fn test_system_error_format() {
+    let err = TrueNasError::SystemError("Reboot required".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("System error"));
+    assert!(msg.contains("Reboot required"));
+}
+
+#[test]
+fn test_internal_error_format() {
+    let err = TrueNasError::InternalError("Unexpected null value".to_string());
+    let msg = err.to_string();
+    assert!(msg.contains("Internal error"));
+    assert!(msg.contains("Unexpected null value"));
+}
+
+// === Helper Method Tests ===
+
+#[test]
+fn test_not_found_helper() {
+    let err = TrueNasError::not_found("User", "john");
+    let msg = err.to_string();
+    assert!(msg.contains("User 'john' not found"));
+}
+
+#[test]
+fn test_validation_helper() {
+    let err = TrueNasError::validation("Field 'email' is required");
+    let msg = err.to_string();
+    assert!(msg.contains("Validation error"));
+    assert!(msg.contains("Field 'email' is required"));
+}
+
+#[test]
+fn test_permission_denied_helper() {
+    let err = TrueNasError::permission_denied("delete system dataset");
+    let msg = err.to_string();
+    assert!(msg.contains("Permission denied"));
+    assert!(msg.contains("delete system dataset"));
+}
+
+#[test]
+fn test_already_exists_helper() {
+    let err = TrueNasError::already_exists("Group", "wheel");
+    let msg = err.to_string();
+    assert!(msg.contains("Group 'wheel' already exists"));
+}
+
+#[test]
+fn test_from_api_response() {
+    let err = TrueNasError::from_api_response(409, "Conflict");
+    let msg = err.to_string();
+    assert!(msg.contains("409"));
+    assert!(msg.contains("Conflict"));
 }

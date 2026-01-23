@@ -1,5 +1,5 @@
-use crate::error::{TrueNasError};
 use crate::error::Result;
+use crate::error::TrueNasError;
 use serde::Deserialize;
 use std::env;
 
@@ -103,7 +103,8 @@ impl TrueNasConfig {
         // Check if we have either API key or username/password
         if self.api_key.is_none() && (self.username.is_none() || self.password.is_none()) {
             return Err(TrueNasError::ConfigError(
-                "Either TRUENAS_API_KEY or TRUENAS_USERNAME and TRUENAS_PASSWORD must be set".to_string(),
+                "Either TRUENAS_API_KEY or TRUENAS_USERNAME and TRUENAS_PASSWORD must be set"
+                    .to_string(),
             ));
         }
 

@@ -1,7 +1,7 @@
-use crate::error::{Result, TrueNasError};
 use crate::config::TrueNasConfig;
+use crate::error::{Result, TrueNasError};
 use reqwest::{Client, header};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::time::Duration;
 
 /// TrueNAS API client
@@ -33,7 +33,11 @@ impl TrueNasClient {
 
         let base_url = config.server_url.trim_end_matches('/').to_string();
 
-        Ok(Self { client, config, base_url })
+        Ok(Self {
+            client,
+            config,
+            base_url,
+        })
     }
 
     /// Get the base URL
@@ -45,7 +49,9 @@ impl TrueNasClient {
     fn get_auth_header(&self) -> Option<String> {
         if let Some(api_key) = &self.config.api_key {
             Some(format!("Bearer {}", api_key))
-        } else if let (Some(username), Some(password)) = (&self.config.username, &self.config.password) {
+        } else if let (Some(username), Some(password)) =
+            (&self.config.username, &self.config.password)
+        {
             Some(format!("Basic {}", base64_encode(username, password)))
         } else {
             None
@@ -65,7 +71,10 @@ impl TrueNasClient {
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
-            let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(TrueNasError::ApiError { status, message });
         }
 
@@ -73,7 +82,11 @@ impl TrueNasClient {
     }
 
     /// Make a POST request
-    pub async fn post<T: DeserializeOwned, B: Serialize>(&self, endpoint: &str, body: &B) -> Result<T> {
+    pub async fn post<T: DeserializeOwned, B: Serialize>(
+        &self,
+        endpoint: &str,
+        body: &B,
+    ) -> Result<T> {
         let url = format!("{}{}", self.base_url, endpoint);
         let mut request = self.client.post(&url).json(body);
 
@@ -85,7 +98,10 @@ impl TrueNasClient {
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
-            let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(TrueNasError::ApiError { status, message });
         }
 
@@ -94,7 +110,11 @@ impl TrueNasClient {
 
     /// Make a PUT request
     #[allow(dead_code)]
-    pub async fn put<T: DeserializeOwned, B: Serialize>(&self, endpoint: &str, body: &B) -> Result<T> {
+    pub async fn put<T: DeserializeOwned, B: Serialize>(
+        &self,
+        endpoint: &str,
+        body: &B,
+    ) -> Result<T> {
         let url = format!("{}{}", self.base_url, endpoint);
         let mut request = self.client.put(&url).json(body);
 
@@ -106,7 +126,10 @@ impl TrueNasClient {
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
-            let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(TrueNasError::ApiError { status, message });
         }
 
@@ -126,7 +149,10 @@ impl TrueNasClient {
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
-            let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(TrueNasError::ApiError { status, message });
         }
 
@@ -135,7 +161,11 @@ impl TrueNasClient {
 
     /// Make a DELETE request with body
     #[allow(dead_code)]
-    pub async fn delete_with_body<T: DeserializeOwned, B: Serialize>(&self, endpoint: &str, body: &B) -> Result<T> {
+    pub async fn delete_with_body<T: DeserializeOwned, B: Serialize>(
+        &self,
+        endpoint: &str,
+        body: &B,
+    ) -> Result<T> {
         let url = format!("{}{}", self.base_url, endpoint);
         let mut request = self.client.delete(&url).json(body);
 
@@ -147,7 +177,10 @@ impl TrueNasClient {
 
         if !response.status().is_success() {
             let status = response.status().as_u16();
-            let message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(TrueNasError::ApiError { status, message });
         }
 

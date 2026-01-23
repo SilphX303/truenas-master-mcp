@@ -2,12 +2,30 @@ use truenas_master_mcp::config::{TrueNasConfig, TrueNasVersion};
 
 #[test]
 fn test_true_nas_version_parsing() {
-    assert_eq!("scale".parse::<TrueNasVersion>().unwrap(), TrueNasVersion::Scale);
-    assert_eq!("sc".parse::<TrueNasVersion>().unwrap(), TrueNasVersion::Scale);
-    assert_eq!("SCALE".parse::<TrueNasVersion>().unwrap(), TrueNasVersion::Scale);
-    assert_eq!("core".parse::<TrueNasVersion>().unwrap(), TrueNasVersion::Core);
-    assert_eq!("cr".parse::<TrueNasVersion>().unwrap(), TrueNasVersion::Core);
-    assert_eq!("CORE".parse::<TrueNasVersion>().unwrap(), TrueNasVersion::Core);
+    assert_eq!(
+        "scale".parse::<TrueNasVersion>().unwrap(),
+        TrueNasVersion::Scale
+    );
+    assert_eq!(
+        "sc".parse::<TrueNasVersion>().unwrap(),
+        TrueNasVersion::Scale
+    );
+    assert_eq!(
+        "SCALE".parse::<TrueNasVersion>().unwrap(),
+        TrueNasVersion::Scale
+    );
+    assert_eq!(
+        "core".parse::<TrueNasVersion>().unwrap(),
+        TrueNasVersion::Core
+    );
+    assert_eq!(
+        "cr".parse::<TrueNasVersion>().unwrap(),
+        TrueNasVersion::Core
+    );
+    assert_eq!(
+        "CORE".parse::<TrueNasVersion>().unwrap(),
+        TrueNasVersion::Core
+    );
 }
 
 #[test]

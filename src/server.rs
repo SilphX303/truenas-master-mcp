@@ -1,6 +1,6 @@
-use crate::tools::TrueNasTools;
 use crate::config::TrueNasConfig;
 use crate::error::Result as TrueNasResult;
+use crate::tools::TrueNasTools;
 use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, tool::Parameters},
@@ -194,6 +194,125 @@ pub struct GetChartReleaseResourcesRequest {
     pub release_name: String,
 }
 
+// === New Request Types for Extended Tools ===
+
+// Groups
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetGroupRequest {
+    pub group_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetGroupByNameRequest {
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateGroupRequest {
+    pub name: String,
+    #[serde(default)]
+    pub gid: Option<i32>,
+    #[serde(default)]
+    pub users: Option<Vec<i32>>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteGroupRequest {
+    pub group_id: i32,
+}
+
+// VMs
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetVmRequest {
+    pub vm_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StartVmRequest {
+    pub vm_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StopVmRequest {
+    pub vm_id: i32,
+    #[serde(default)]
+    pub force: Option<bool>,
+}
+
+// Network
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ListInterfacesRequest {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ListRoutesRequest {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetDnsRequest {}
+
+// Services
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetServiceRequest {
+    pub service_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StartServiceRequest {
+    pub service_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StopServiceRequest {
+    pub service_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RestartServiceRequest {
+    pub service_id: i32,
+}
+
+// System
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetAlertsRequest {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CheckUpdatesRequest {}
+
+// Disks
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ListDisksRequest {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetDiskRequest {
+    pub disk_name: String,
+}
+
+// Certificates
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ListCertificatesRequest {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetCertificateRequest {
+    pub cert_id: i32,
+}
+
+// Replication
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ListReplicationTasksRequest {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RunReplicationTaskRequest {
+    pub task_id: i32,
+}
+
+// Cloud Sync
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ListCloudSyncTasksRequest {}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RunCloudSyncTaskRequest {
+    pub task_id: i32,
+}
+
 /// TrueNAS MCP Server
 #[derive(Debug, Clone)]
 pub struct TrueNasServer {
@@ -231,44 +350,71 @@ impl ServerHandler for TrueNasServer {}
 /// Tool router with all tool definitions
 #[tool_router(router = tool_router)]
 impl TrueNasServer {
-    #[tool(name = "list_users", description = "List all users on the TrueNAS system")]
+    #[tool(
+        name = "list_users",
+        description = "List all users on the TrueNAS system"
+    )]
     async fn list_users(&self) {
         let _ = self.tools.list_users().await;
     }
 
-    #[tool(name = "get_user", description = "Get details of a specific user by ID")]
+    #[tool(
+        name = "get_user",
+        description = "Get details of a specific user by ID"
+    )]
     async fn get_user(&self, _req: Parameters<GetUserRequest>) {
         let _ = self.tools.get_user(_req.0.user_id).await;
     }
 
-    #[tool(name = "get_user_by_username", description = "Get details of a specific user by username")]
+    #[tool(
+        name = "get_user_by_username",
+        description = "Get details of a specific user by username"
+    )]
     async fn get_user_by_username(&self, _req: Parameters<GetUserByUsernameRequest>) {
         let _ = self.tools.get_user_by_username(&_req.0.username).await;
     }
 
-    #[tool(name = "list_pools", description = "List all storage pools on the TrueNAS system")]
+    #[tool(
+        name = "list_pools",
+        description = "List all storage pools on the TrueNAS system"
+    )]
     async fn list_pools(&self) {
         let _ = self.tools.list_pools().await;
     }
 
-    #[tool(name = "get_pool_status", description = "Get the status of a specific storage pool")]
+    #[tool(
+        name = "get_pool_status",
+        description = "Get the status of a specific storage pool"
+    )]
     async fn get_pool_status(&self, _req: Parameters<GetPoolStatusRequest>) {
         let _ = self.tools.get_pool_status(&_req.0.pool_name).await;
     }
 
-    #[tool(name = "list_datasets", description = "List all datasets on the TrueNAS system")]
+    #[tool(
+        name = "list_datasets",
+        description = "List all datasets on the TrueNAS system"
+    )]
     async fn list_datasets(&self) {
         let _ = self.tools.list_datasets().await;
     }
 
-    #[tool(name = "get_dataset", description = "Get details of a specific dataset")]
+    #[tool(
+        name = "get_dataset",
+        description = "Get details of a specific dataset"
+    )]
     async fn get_dataset(&self, _req: Parameters<GetDatasetRequest>) {
         let _ = self.tools.get_dataset(&_req.0.dataset_path).await;
     }
 
-    #[tool(name = "create_dataset", description = "Create a new dataset in a pool")]
+    #[tool(
+        name = "create_dataset",
+        description = "Create a new dataset in a pool"
+    )]
     async fn create_dataset(&self, _req: Parameters<CreateDatasetRequest>) {
-        let _ = self.tools.create_dataset(&_req.0.pool_name, &_req.0.dataset_name).await;
+        let _ = self
+            .tools
+            .create_dataset(&_req.0.pool_name, &_req.0.dataset_name)
+            .await;
     }
 
     #[tool(name = "delete_dataset", description = "Delete a dataset")]
@@ -276,14 +422,20 @@ impl TrueNasServer {
         let _ = self.tools.delete_dataset(&_req.0.dataset_path).await;
     }
 
-    #[tool(name = "list_smb_shares", description = "List all SMB shares on the TrueNAS system")]
+    #[tool(
+        name = "list_smb_shares",
+        description = "List all SMB shares on the TrueNAS system"
+    )]
     async fn list_smb_shares(&self) {
         let _ = self.tools.list_smb_shares().await;
     }
 
     #[tool(name = "create_smb_share", description = "Create a new SMB share")]
     async fn create_smb_share(&self, _req: Parameters<CreateSmbShareRequest>) {
-        let _ = self.tools.create_smb_share(&_req.0.name, &_req.0.path, _req.0.comment.as_deref()).await;
+        let _ = self
+            .tools
+            .create_smb_share(&_req.0.name, &_req.0.path, _req.0.comment.as_deref())
+            .await;
     }
 
     #[tool(name = "delete_smb_share", description = "Delete an SMB share")]
@@ -291,14 +443,20 @@ impl TrueNasServer {
         let _ = self.tools.delete_smb_share(_req.0.share_id).await;
     }
 
-    #[tool(name = "list_nfs_exports", description = "List all NFS exports on the TrueNAS system")]
+    #[tool(
+        name = "list_nfs_exports",
+        description = "List all NFS exports on the TrueNAS system"
+    )]
     async fn list_nfs_exports(&self) {
         let _ = self.tools.list_nfs_exports().await;
     }
 
     #[tool(name = "create_nfs_export", description = "Create a new NFS export")]
     async fn create_nfs_export(&self, _req: Parameters<CreateNfsExportRequest>) {
-        let _ = self.tools.create_nfs_export(_req.0.paths, _req.0.comment).await;
+        let _ = self
+            .tools
+            .create_nfs_export(_req.0.paths, _req.0.comment)
+            .await;
     }
 
     #[tool(name = "delete_nfs_export", description = "Delete an NFS export")]
@@ -306,14 +464,20 @@ impl TrueNasServer {
         let _ = self.tools.delete_nfs_export(_req.0.export_id).await;
     }
 
-    #[tool(name = "list_snapshots", description = "List all ZFS snapshots on the TrueNAS system")]
+    #[tool(
+        name = "list_snapshots",
+        description = "List all ZFS snapshots on the TrueNAS system"
+    )]
     async fn list_snapshots(&self) {
         let _ = self.tools.list_snapshots().await;
     }
 
     #[tool(name = "create_snapshot", description = "Create a new ZFS snapshot")]
     async fn create_snapshot(&self, _req: Parameters<CreateSnapshotRequest>) {
-        let _ = self.tools.create_snapshot(&_req.0.dataset, &_req.0.snapshot_name).await;
+        let _ = self
+            .tools
+            .create_snapshot(&_req.0.dataset, &_req.0.snapshot_name)
+            .await;
     }
 
     #[tool(name = "delete_snapshot", description = "Delete a ZFS snapshot")]
@@ -321,12 +485,18 @@ impl TrueNasServer {
         let _ = self.tools.delete_snapshot(&_req.0.snapshot_id).await;
     }
 
-    #[tool(name = "list_iscsi_targets", description = "List all iSCSI targets on the TrueNAS system")]
+    #[tool(
+        name = "list_iscsi_targets",
+        description = "List all iSCSI targets on the TrueNAS system"
+    )]
     async fn list_iscsi_targets(&self) {
         let _ = self.tools.list_iscsi_targets().await;
     }
 
-    #[tool(name = "create_iscsi_target", description = "Create a new iSCSI target")]
+    #[tool(
+        name = "create_iscsi_target",
+        description = "Create a new iSCSI target"
+    )]
     async fn create_iscsi_target(&self, _req: Parameters<CreateIscsiTargetRequest>) {
         let _ = self.tools.create_iscsi_target(&_req.0.name).await;
     }
@@ -336,17 +506,26 @@ impl TrueNasServer {
         let _ = self.tools.delete_iscsi_target(_req.0.target_id).await;
     }
 
-    #[tool(name = "get_system_info", description = "Get system information from TrueNAS")]
+    #[tool(
+        name = "get_system_info",
+        description = "Get system information from TrueNAS"
+    )]
     async fn get_system_info(&self) {
         let _ = self.tools.get_system_info().await;
     }
 
-    #[tool(name = "list_apps", description = "List all applications (jails/containers) on TrueNAS")]
+    #[tool(
+        name = "list_apps",
+        description = "List all applications (jails/containers) on TrueNAS"
+    )]
     async fn list_apps(&self) {
         let _ = self.tools.list_apps().await;
     }
 
-    #[tool(name = "get_app", description = "Get details of a specific application")]
+    #[tool(
+        name = "get_app",
+        description = "Get details of a specific application"
+    )]
     async fn get_app(&self, _req: Parameters<GetAppRequest>) {
         let _ = self.tools.get_app(&_req.0.app_name).await;
     }
@@ -358,86 +537,390 @@ impl TrueNasServer {
 
     #[tool(name = "stop_app", description = "Stop an application on TrueNAS")]
     async fn stop_app(&self, _req: Parameters<StopAppRequest>) {
-        let _ = self.tools.stop_app(&_req.0.app_name, _req.0.force.unwrap_or(false)).await;
+        let _ = self
+            .tools
+            .stop_app(&_req.0.app_name, _req.0.force.unwrap_or(false))
+            .await;
     }
 
-    #[tool(name = "restart_app", description = "Restart an application on TrueNAS")]
+    #[tool(
+        name = "restart_app",
+        description = "Restart an application on TrueNAS"
+    )]
     async fn restart_app(&self, _req: Parameters<RestartAppRequest>) {
         let _ = self.tools.restart_app(&_req.0.app_name).await;
     }
 
-    #[tool(name = "create_app", description = "Create a new application from a catalog item")]
+    #[tool(
+        name = "create_app",
+        description = "Create a new application from a catalog item"
+    )]
     async fn create_app(&self, _req: Parameters<CreateAppRequest>) {
-        let _ = self.tools.create_app(&_req.0.catalog, &_req.0.item, &_req.0.name, _req.0.values, _req.0.version.as_deref()).await;
+        let _ = self
+            .tools
+            .create_app(
+                &_req.0.catalog,
+                &_req.0.item,
+                &_req.0.name,
+                _req.0.values,
+                _req.0.version.as_deref(),
+            )
+            .await;
     }
 
-    #[tool(name = "update_app", description = "Update an existing application with new configuration")]
+    #[tool(
+        name = "update_app",
+        description = "Update an existing application with new configuration"
+    )]
     async fn update_app(&self, _req: Parameters<UpdateAppRequest>) {
         let _ = self.tools.update_app(&_req.0.app_name, _req.0.values).await;
     }
 
-    #[tool(name = "delete_app", description = "Delete an application from TrueNAS")]
+    #[tool(
+        name = "delete_app",
+        description = "Delete an application from TrueNAS"
+    )]
     async fn delete_app(&self, _req: Parameters<DeleteAppRequest>) {
-        let _ = self.tools.delete_app(&_req.0.app_name, _req.0.force.unwrap_or(false)).await;
+        let _ = self
+            .tools
+            .delete_app(&_req.0.app_name, _req.0.force.unwrap_or(false))
+            .await;
     }
 
-    #[tool(name = "rollback_app", description = "Rollback an application to a previous version")]
+    #[tool(
+        name = "rollback_app",
+        description = "Rollback an application to a previous version"
+    )]
     async fn rollback_app(&self, _req: Parameters<RollbackAppRequest>) {
-        let _ = self.tools.rollback_app(&_req.0.app_name, _req.0.rollback_version.as_deref(), _req.0.snap_name.as_deref(), _req.0.force.unwrap_or(false)).await;
+        let _ = self
+            .tools
+            .rollback_app(
+                &_req.0.app_name,
+                _req.0.rollback_version.as_deref(),
+                _req.0.snap_name.as_deref(),
+                _req.0.force.unwrap_or(false),
+            )
+            .await;
     }
 
-    #[tool(name = "get_app_config", description = "Get the configuration of an application")]
+    #[tool(
+        name = "get_app_config",
+        description = "Get the configuration of an application"
+    )]
     async fn get_app_config(&self, _req: Parameters<GetAppConfigRequest>) {
         let _ = self.tools.get_app_config(&_req.0.app_name).await;
     }
 
-    #[tool(name = "get_app_upgrade_options", description = "Get available upgrade options for an application")]
+    #[tool(
+        name = "get_app_upgrade_options",
+        description = "Get available upgrade options for an application"
+    )]
     async fn get_app_upgrade_options(&self, _req: Parameters<GetAppUpgradeOptionsRequest>) {
         let _ = self.tools.get_app_upgrade_options(&_req.0.app_name).await;
     }
 
-    #[tool(name = "upgrade_app", description = "Upgrade an application to a newer version")]
+    #[tool(
+        name = "upgrade_app",
+        description = "Upgrade an application to a newer version"
+    )]
     async fn upgrade_app(&self, _req: Parameters<UpgradeAppRequest>) {
-        let _ = self.tools.upgrade_app(&_req.0.app_name, _req.0.options).await;
+        let _ = self
+            .tools
+            .upgrade_app(&_req.0.app_name, _req.0.options)
+            .await;
     }
 
-    #[tool(name = "scale_app", description = "Scale an application's replica count")]
+    #[tool(
+        name = "scale_app",
+        description = "Scale an application's replica count"
+    )]
     async fn scale_app(&self, _req: Parameters<ScaleAppRequest>) {
         let _ = self.tools.scale_app(&_req.0.app_name, _req.0.replica).await;
     }
 
-    #[tool(name = "list_catalog_items", description = "List all available catalog items from TrueNAS catalog")]
+    #[tool(
+        name = "list_catalog_items",
+        description = "List all available catalog items from TrueNAS catalog"
+    )]
     async fn list_catalog_items(&self) {
         let _ = self.tools.list_catalog_items().await;
     }
 
-    #[tool(name = "get_catalog", description = "Get details of a specific catalog")]
+    #[tool(
+        name = "get_catalog",
+        description = "Get details of a specific catalog"
+    )]
     async fn get_catalog(&self, _req: Parameters<GetCatalogRequest>) {
         let _ = self.tools.get_catalog(&_req.0.catalog_id).await;
     }
 
-    #[tool(name = "get_catalog_trains", description = "Get all available train versions from a catalog")]
+    #[tool(
+        name = "get_catalog_trains",
+        description = "Get all available train versions from a catalog"
+    )]
     async fn get_catalog_trains(&self, _req: Parameters<GetCatalogTrainsRequest>) {
         let _ = self.tools.get_catalog_trains(&_req.0.catalog_id).await;
     }
 
-    #[tool(name = "get_catalog_item", description = "Get details of a specific item from a catalog")]
+    #[tool(
+        name = "get_catalog_item",
+        description = "Get details of a specific item from a catalog"
+    )]
     async fn get_catalog_item(&self, _req: Parameters<GetCatalogItemRequest>) {
-        let _ = self.tools.get_catalog_item(&_req.0.catalog_id, &_req.0.item, &_req.0.train).await;
+        let _ = self
+            .tools
+            .get_catalog_item(&_req.0.catalog_id, &_req.0.item, &_req.0.train)
+            .await;
     }
 
-    #[tool(name = "list_chart_releases", description = "List all deployed chart releases (apps)")]
+    #[tool(
+        name = "list_chart_releases",
+        description = "List all deployed chart releases (apps)"
+    )]
     async fn list_chart_releases(&self) {
         let _ = self.tools.list_chart_releases().await;
     }
 
-    #[tool(name = "get_chart_release", description = "Get details of a specific chart release")]
+    #[tool(
+        name = "get_chart_release",
+        description = "Get details of a specific chart release"
+    )]
     async fn get_chart_release(&self, _req: Parameters<GetChartReleaseRequest>) {
         let _ = self.tools.get_chart_release(&_req.0.release_name).await;
     }
 
-    #[tool(name = "get_chart_release_resources", description = "Get resources for a specific chart release")]
+    #[tool(
+        name = "get_chart_release_resources",
+        description = "Get resources for a specific chart release"
+    )]
     async fn get_chart_release_resources(&self, _req: Parameters<GetChartReleaseResourcesRequest>) {
-        let _ = self.tools.get_chart_release_resources(&_req.0.release_name).await;
+        let _ = self
+            .tools
+            .get_chart_release_resources(&_req.0.release_name)
+            .await;
+    }
+
+    // === Group Management Tools ===
+
+    #[tool(
+        name = "list_groups",
+        description = "List all groups on the TrueNAS system"
+    )]
+    async fn list_groups(&self) {
+        let _ = self.tools.list_groups().await;
+    }
+
+    #[tool(
+        name = "get_group",
+        description = "Get details of a specific group by ID"
+    )]
+    async fn get_group(&self, _req: Parameters<GetGroupRequest>) {
+        let _ = self.tools.get_group(_req.0.group_id).await;
+    }
+
+    #[tool(
+        name = "get_group_by_name",
+        description = "Get details of a specific group by name"
+    )]
+    async fn get_group_by_name(&self, _req: Parameters<GetGroupByNameRequest>) {
+        let _ = self.tools.get_group_by_name(&_req.0.name).await;
+    }
+
+    #[tool(name = "create_group", description = "Create a new group on TrueNAS")]
+    async fn create_group(&self, _req: Parameters<CreateGroupRequest>) {
+        let _ = self
+            .tools
+            .create_group(&_req.0.name, _req.0.gid, _req.0.users)
+            .await;
+    }
+
+    #[tool(name = "delete_group", description = "Delete a group from TrueNAS")]
+    async fn delete_group(&self, _req: Parameters<DeleteGroupRequest>) {
+        let _ = self.tools.delete_group(_req.0.group_id).await;
+    }
+
+    // === VM Management Tools ===
+
+    #[tool(
+        name = "list_vms",
+        description = "List all virtual machines on TrueNAS"
+    )]
+    async fn list_vms(&self) {
+        let _ = self.tools.list_vms().await;
+    }
+
+    #[tool(
+        name = "get_vm",
+        description = "Get details of a specific virtual machine"
+    )]
+    async fn get_vm(&self, _req: Parameters<GetVmRequest>) {
+        let _ = self.tools.get_vm(_req.0.vm_id).await;
+    }
+
+    #[tool(name = "start_vm", description = "Start a virtual machine")]
+    async fn start_vm(&self, _req: Parameters<StartVmRequest>) {
+        let _ = self.tools.start_vm(_req.0.vm_id).await;
+    }
+
+    #[tool(name = "stop_vm", description = "Stop a virtual machine")]
+    async fn stop_vm(&self, _req: Parameters<StopVmRequest>) {
+        let _ = self
+            .tools
+            .stop_vm(_req.0.vm_id, _req.0.force.unwrap_or(false))
+            .await;
+    }
+
+    #[tool(name = "restart_vm", description = "Restart a virtual machine")]
+    async fn restart_vm(&self, _req: Parameters<GetVmRequest>) {
+        let _ = self.tools.restart_vm(_req.0.vm_id).await;
+    }
+
+    // === Network Management Tools ===
+
+    #[tool(
+        name = "list_interfaces",
+        description = "List all network interfaces on TrueNAS"
+    )]
+    async fn list_interfaces(&self) {
+        let _ = self.tools.list_interfaces().await;
+    }
+
+    #[tool(
+        name = "list_routes",
+        description = "List all network routes on TrueNAS"
+    )]
+    async fn list_routes(&self) {
+        let _ = self.tools.list_routes().await;
+    }
+
+    #[tool(name = "get_dns", description = "Get DNS configuration for TrueNAS")]
+    async fn get_dns(&self) {
+        let _ = self.tools.get_dns().await;
+    }
+
+    // === Services Management Tools ===
+
+    #[tool(name = "list_services", description = "List all services on TrueNAS")]
+    async fn list_services(&self) {
+        let _ = self.tools.list_services().await;
+    }
+
+    #[tool(
+        name = "get_service",
+        description = "Get details of a specific service"
+    )]
+    async fn get_service(&self, _req: Parameters<GetServiceRequest>) {
+        let _ = self.tools.get_service(_req.0.service_id).await;
+    }
+
+    #[tool(name = "start_service", description = "Start a service on TrueNAS")]
+    async fn start_service(&self, _req: Parameters<StartServiceRequest>) {
+        let _ = self.tools.start_service(_req.0.service_id).await;
+    }
+
+    #[tool(name = "stop_service", description = "Stop a service on TrueNAS")]
+    async fn stop_service(&self, _req: Parameters<StopServiceRequest>) {
+        let _ = self.tools.stop_service(_req.0.service_id).await;
+    }
+
+    #[tool(name = "restart_service", description = "Restart a service on TrueNAS")]
+    async fn restart_service(&self, _req: Parameters<RestartServiceRequest>) {
+        let _ = self.tools.restart_service(_req.0.service_id).await;
+    }
+
+    // === System Management Tools ===
+
+    #[tool(name = "get_alerts", description = "Get system alerts from TrueNAS")]
+    async fn get_alerts(&self) {
+        let _ = self.tools.get_alerts().await;
+    }
+
+    #[tool(name = "check_for_updates", description = "Check for system updates")]
+    async fn check_for_updates(&self) {
+        let _ = self.tools.check_for_updates().await;
+    }
+
+    #[tool(name = "reboot_system", description = "Reboot the TrueNAS system")]
+    async fn reboot_system(&self) {
+        let _ = self.tools.reboot_system().await;
+    }
+
+    #[tool(name = "shutdown_system", description = "Shutdown the TrueNAS system")]
+    async fn shutdown_system(&self) {
+        let _ = self.tools.shutdown_system().await;
+    }
+
+    // === Disk Management Tools ===
+
+    #[tool(name = "list_disks", description = "List all disks on TrueNAS")]
+    async fn list_disks(&self) {
+        let _ = self.tools.list_disks().await;
+    }
+
+    #[tool(name = "get_disk", description = "Get details of a specific disk")]
+    async fn get_disk(&self, _req: Parameters<GetDiskRequest>) {
+        let _ = self.tools.get_disk(&_req.0.disk_name).await;
+    }
+
+    // === Certificate Management Tools ===
+
+    #[tool(
+        name = "list_certificates",
+        description = "List all certificates on TrueNAS"
+    )]
+    async fn list_certificates(&self) {
+        let _ = self.tools.list_certificates().await;
+    }
+
+    #[tool(
+        name = "get_certificate",
+        description = "Get details of a specific certificate"
+    )]
+    async fn get_certificate(&self, _req: Parameters<GetCertificateRequest>) {
+        let _ = self.tools.get_certificate(_req.0.cert_id).await;
+    }
+
+    // === Replication Tools ===
+
+    #[tool(
+        name = "list_replication_tasks",
+        description = "List all replication tasks on TrueNAS"
+    )]
+    async fn list_replication_tasks(&self) {
+        let _ = self.tools.list_replication_tasks().await;
+    }
+
+    #[tool(name = "run_replication_task", description = "Run a replication task")]
+    async fn run_replication_task(&self, _req: Parameters<RunReplicationTaskRequest>) {
+        let _ = self.tools.run_replication_task(_req.0.task_id).await;
+    }
+
+    // === Cloud Sync Tools ===
+
+    #[tool(
+        name = "list_cloudsync_tasks",
+        description = "List all cloud sync tasks on TrueNAS"
+    )]
+    async fn list_cloudsync_tasks(&self) {
+        let _ = self.tools.list_cloudsync_tasks().await;
+    }
+
+    #[tool(name = "run_cloudsync_task", description = "Run a cloud sync task")]
+    async fn run_cloudsync_task(&self, _req: Parameters<RunCloudSyncTaskRequest>) {
+        let _ = self.tools.run_cloudsync_task(_req.0.task_id).await;
+    }
+
+    // === Enclosure Tools ===
+
+    #[tool(name = "get_enclosure", description = "Get enclosure information")]
+    async fn get_enclosure(&self) {
+        let _ = self.tools.get_enclosure().await;
+    }
+
+    // === Support Tools ===
+
+    #[tool(name = "get_support", description = "Get support information")]
+    async fn get_support(&self) {
+        let _ = self.tools.get_support().await;
     }
 }
