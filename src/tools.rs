@@ -794,8 +794,7 @@ pub struct DatasetQuota {
 /// # Example
 ///
 /// ```ignore
-/// use truenas_master_mcp::client::TrueNasClient;
-/// use truenas_master_mcp::config::TrueNasConfig;
+/// use truenas_master_mcp::{TrueNasClient, TrueNasConfig, TrueNasTools};
 ///
 /// let config = TrueNasConfig {
 ///     server_url: "https://truenas.local".to_string(),
@@ -806,6 +805,7 @@ pub struct DatasetQuota {
 /// let client = TrueNasClient::new(config).unwrap();
 /// let tools = TrueNasTools::new(client);
 ///
+/// // Example: List users
 /// let users = tools.list_users().await.unwrap();
 /// ```
 #[derive(Debug)]
