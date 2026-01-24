@@ -65,6 +65,9 @@ moka = { version = "0.12", features = ["future"] }
 # Time for cache timestamps
 chrono = { version = "0.4", features = ["std"] }
 
+# OpenSSL for static musl/Alpine builds
+openssl = { version = "0.10", features = ["vendored"] }
+
 # OpenAPI generated client
 serde_repr = "0.1"
 
