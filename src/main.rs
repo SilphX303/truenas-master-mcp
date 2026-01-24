@@ -894,6 +894,17 @@ impl TrueNasServerImpl {
                     999
                 };
 
+                let months_until_80_pct = if usage_percent >= 80 {
+                    "ALREADY OVER 80%".to_string()
+                } else {
+                    format!("{}", (100 - usage_percent - 10) / growth_rate_estimate)
+                };
+                let months_until_90_pct = if usage_percent >= 90 {
+                    "ALREADY OVER 90%".to_string()
+                } else {
+                    format!("{}", (100 - usage_percent) / growth_rate_estimate)
+                };
+
                 let planning = format!(
                     "# TrueNAS Capacity Planning Report\n\n## Current Capacity\n- **Total Pool Size:** {:.1} TB\n- **Used Space:** {:.1} TB\n- **Free Space:** {:.1} TB\n- **Usage:** {}%\n- **Datasets:** {}\n\n## Growth Projections\n- **Estimated monthly growth:** {}% (assumed)\n- **Estimated months until 80% capacity:** {}\n- **Estimated months until 90% capacity:** {}\n- **Estimated months until full:** {}\n\n## Dataset Analysis\n- **Average dataset size:** {:.2} GB\n- **Largest datasets:**\n{}\n\n## Recommendations\n{}\n\n## Action Items\n{}",
                     total_size as f64 / 1_099_511_627_776.0,
@@ -902,16 +913,8 @@ impl TrueNasServerImpl {
                     usage_percent,
                     dataset_count,
                     growth_rate_estimate,
-                    if usage_percent >= 80 {
-                        "ALREADY OVER 80%"
-                    } else {
-                        &format!("{}", (100 - usage_percent - 10) / growth_rate_estimate)
-                    },
-                    if usage_percent >= 90 {
-                        "ALREADY OVER 90%"
-                    } else {
-                        &format!("{}", (100 - usage_percent) / growth_rate_estimate)
-                    },
+                    months_until_80_pct,
+                    months_until_90_pct,
                     months_until_full,
                     avg_dataset_size as f64 / 1_073_741_824.0,
                     datasets
