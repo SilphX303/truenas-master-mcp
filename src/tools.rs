@@ -236,15 +236,15 @@ impl FilterParams {
 
 impl PaginationParams {
     /// Apply ordering to a slice
-    pub fn apply_ordering<T>(&self, items: &mut Vec<T>)
+    pub fn apply_ordering<T>(&self, items: &mut [T])
     where
         T: Clone + Serialize,
     {
         if let Some(ref order_by) = self.order_by {
             let mut descending = false;
-            let field = if order_by.starts_with('-') {
+            let field = if let Some(stripped) = order_by.strip_prefix('-') {
                 descending = true;
-                &order_by[1..]
+                stripped
             } else {
                 order_by.as_str()
             };

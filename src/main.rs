@@ -818,11 +818,7 @@ impl TrueNasServerImpl {
                 let resource_heavy_apps: Vec<_> = apps
                     .iter()
                     .filter(|a| {
-                        let state = a
-                            .state
-                            .as_ref()
-                            .and_then(|s| Some(s == "RUNNING"))
-                            .unwrap_or(false);
+                        let state = a.state.as_ref().map(|s| s == "RUNNING").unwrap_or(false);
                         state && a.port.unwrap_or(0) > 0 // Apps with ports typically need more resources
                     })
                     .map(|a| json!({"name": a.name, "version": a.version}))
@@ -878,7 +874,7 @@ impl TrueNasServerImpl {
                 let total_free: u64 = pools.iter().map(|p| p.free).sum();
                 let total_used = total_size.saturating_sub(total_free);
                 let usage_percent = if total_size > 0 {
-                    (total_used * 100 / total_size) as u64
+                    total_used * 100 / total_size
                 } else {
                     0
                 };

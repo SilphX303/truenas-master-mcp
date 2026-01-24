@@ -79,10 +79,7 @@ impl ApiClient {
             request = request.json(body);
         }
 
-        let response = request
-            .send()
-            .await
-            .map_err(|e| TrueNasError::RequestError(e))?;
+        let response = request.send().await.map_err(TrueNasError::RequestError)?;
 
         let status = response.status();
 
@@ -97,10 +94,7 @@ impl ApiClient {
             });
         }
 
-        response
-            .json()
-            .await
-            .map_err(|e| TrueNasError::RequestError(e))
+        response.json().await.map_err(TrueNasError::RequestError)
     }
 
     // === Pool Operations ===
