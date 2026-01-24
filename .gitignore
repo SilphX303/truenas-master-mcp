@@ -7,6 +7,7 @@
 # Rust Build Outputs
 # -----------------------------------------------------------------------------
 # Cargo build directory
+.cargo/
 /target/
 # Per-profile build outputs
 target/*
