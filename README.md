@@ -7,20 +7,24 @@ A Model Context Protocol (MCP) server for managing TrueNAS systems through AI as
 This MCP server provides access to TrueNAS API functionality including:
 
 - **User Management**: List, get, create, update, delete users and groups
-- **Pool Management**: List pools, get pool status
+- **Pool Management**: List pools, get pool status, scrub pools
 - **Dataset Management**: List, create, get, delete datasets
 - **SMB Shares**: List, create, delete SMB shares
 - **NFS Exports**: List, create, delete NFS exports
-- **ZFS Snapshots**: List, create, delete snapshots
+- **ZFS Snapshots**: List, create, delete, rollback snapshots
 - **iSCSI Targets**: List, create, delete iSCSI targets
-- **System Information**: Get system info, alerts, updates
-- **VM Management**: List, start, stop, restart virtual machines
+- **System Monitoring**: Get alerts, events, disk health, system logs
+- **VM Management**: List, start, stop, restart, create, clone VMs
 - **Network Management**: List interfaces, routes, DNS configuration
 - **Service Management**: List, start, stop, restart services
-- **Disk Management**: List disks and get disk details
-- **Certificate Management**: List certificates
-- **Replication**: List and run replication tasks
-- **Cloud Sync**: List and run cloud sync tasks
+- **Disk Management**: List disks, get disk details, SMART status
+- **Certificate Management**: List and get certificates
+- **Replication**: List, create, run replication tasks
+- **Cloud Sync**: List, create, run cloud sync tasks
+- **Kubernetes/Docker**: Get K8s status, list Docker images (SCALE)
+- **Task Management**: List, get status, abort running tasks
+- **Apps/Jails**: Full app lifecycle management (SCALE/CORE)
+- **Caching**: Built-in caching for frequently accessed data
 
 ## Installation
 
@@ -133,6 +137,147 @@ Add to your Claude Desktop config file:
 
 The server implements the standard Model Context Protocol. Refer to your MCP client's documentation for how to connect servers.
 
+### Example Usage
+
+Once connected to an MCP client like Claude Desktop, you can manage your TrueNAS system:
+
+```bash
+# List all storage pools
+list_pools()
+
+# Get details of a specific dataset
+get_dataset(dataset_id_or_path="tank/data/mydata")
+
+# Create a new user
+create_user(username="newuser", email="user@example.com", full_name="New User")
+
+# List all VMs and start one
+list_vms()
+start_vm(vm_id=1)
+
+# Check system alerts
+get_alerts()
+```
+
+## AI Usage Examples
+
+This section provides examples for AI assistants on how to effectively use the TrueNAS MCP tools.
+
+### Monitoring System Health
+
+```python
+# Get comprehensive system overview
+system_info = get_system_info()
+alerts = get_alerts()
+pools = list_pools()
+disk_health = get_disk_health()
+
+# Check for critical issues
+if alerts and len(alerts) > 0:
+    critical_alerts = [a for a in alerts if a.get("severity") == "CRITICAL"]
+    if critical_alerts:
+        # Take action on critical alerts
+        for alert in critical_alerts:
+            print(f"Alert: {alert['message']}")
+```
+
+### Managing Storage
+
+```python
+# Find datasets with low space
+datasets = list_datasets()
+for ds in datasets:
+    if ds.get("available", 0) < ds.get("size", 0) * 0.1:
+        print(f"Low space: {ds['name']} ({ds['available']} remaining)")
+
+# Create a new dataset for backups
+create_dataset(pool_name="tank", dataset_name="backups")
+
+# Take a snapshot before major changes
+create_snapshot(dataset="tank/data", snapshot_name="pre-update-$(date +%Y%m%d)")
+```
+
+### Managing Applications (SCALE)
+
+```python
+# Check app status and health
+apps = list_apps()
+for app in apps:
+    if app.get("state") != "RUNNING":
+        print(f"App not running: {app['name']} - {app.get('error', 'Unknown error')}")
+
+# Scale a deployment
+scale_app(app_name="my-app", replica_count=3)
+
+# Upgrade an app with available update
+upgrade_app(app_name="my-app", upgrade_version="1.2.3")
+```
+
+### Managing Virtual Machines
+
+```python
+# Find and stop unused VMs
+vms = list_vms()
+for vm in vms:
+    if vm.get("state") == "RUNNING" and vm.get("uptime", 0) > 86400 * 7:
+        # VM has been running for more than 7 days
+        print(f"Consider restarting: {vm['name']}")
+
+# Clone a VM before testing
+clone_vm(vm_id=1, name="vm-test-clone")
+```
+
+### Handling Alerts
+
+```python
+# Get and categorize alerts
+alerts = get_alerts()
+for alert in alerts:
+    severity = alert.get("severity", "INFO")
+    source = alert.get("source", "unknown")
+    message = alert.get("message", "")
+
+    if severity == "CRITICAL":
+        # Immediately notify and potentially take action
+        print(f"CRITICAL: {message}")
+        if "disk" in source.lower():
+            # Check disk health
+            disk = get_disk(disk_name=extract_disk_name(message))
+            print(f"Disk SMART status: {disk.get('smart_status')}")
+
+# Dismiss resolved alerts
+dismiss_alert(alert_id="alert-123")
+
+# Clear all old alerts
+clear_alerts()
+```
+
+### Batch Operations
+
+```python
+# Execute multiple operations in sequence
+operations = [
+    {"name": "list_pools", "arguments": {}},
+    {"name": "list_apps", "arguments": {}},
+    {"name": "get_alerts", "arguments": {}},
+]
+results = batch(operations=operations)
+```
+
+### HTTP/SSE Mode
+
+For remote access or web-based MCP clients:
+
+```bash
+# Run in HTTP/SSE mode on port 8080
+TRUENAS_SERVER_URL=https://truenas.local TRUENAS_API_KEY=your-key \
+  truenas-master-mcp --transport=sse --port=8080
+```
+
+The server will be available at:
+- SSE stream: `http://localhost:8080/sse`
+- POST messages: `http://localhost:8080/messages`
+
 ## Available Tools
 
 ### User Management
@@ -143,6 +288,7 @@ The server implements the standard Model Context Protocol. Refer to your MCP cli
 ### Pool Management
 - `list_pools` - List all storage pools
 - `get_pool_status` - Get status of a specific pool
+- `scrub_pool` - Start a scrub on a storage pool
 
 ### Dataset Management
 - `list_datasets` - List all datasets
@@ -194,12 +340,17 @@ The server implements the standard Model Context Protocol. Refer to your MCP cli
 - `get_chart_release` - Get chart release details
 - `get_chart_release_resources` - Get chart release resources
 
-### System Information
+### System Monitoring
 - `get_system_info` - Get system information
 - `get_alerts` - Get system alerts
+- `get_alert_classes` - Get alert classes/categories
+- `dismiss_alert` - Dismiss a specific alert
+- `clear_alerts` - Clear all system alerts
+- `get_system_events` - Get recent system events/logs
+- `get_disk_health` - Get disk health/SMART status
 - `check_for_updates` - Check for system updates
-- `reboot_system` - Reboot the system
-- `shutdown_system` - Shutdown the system
+- `reboot_system` - Reboot the system (requires confirm=true)
+- `shutdown_system` - Shutdown the system (requires confirm=true)
 
 ### Group Management
 - `list_groups` - List all groups
@@ -211,9 +362,14 @@ The server implements the standard Model Context Protocol. Refer to your MCP cli
 ### VM Management
 - `list_vms` - List all virtual machines
 - `get_vm` - Get VM details by ID
+- `create_vm` - Create a new virtual machine
+- `update_vm` - Update VM configuration
 - `start_vm` - Start a virtual machine
 - `stop_vm` - Stop a virtual machine
 - `restart_vm` - Restart a virtual machine
+- `powercycle_vm` - Power cycle (hard reset) a virtual machine
+- `clone_vm` - Clone an existing virtual machine
+- `delete_vm` - Delete a virtual machine
 
 ### Network Management
 - `list_interfaces` - List all network interfaces
@@ -237,11 +393,52 @@ The server implements the standard Model Context Protocol. Refer to your MCP cli
 
 ### Replication
 - `list_replication_tasks` - List all replication tasks
+- `get_replication_task` - Get replication task by ID
+- `create_replication_task` - Create a new replication task
+- `delete_replication_task` - Delete a replication task
 - `run_replication_task` - Run a replication task
 
 ### Cloud Sync
 - `list_cloudsync_tasks` - List all cloud sync tasks
+- `get_cloudsync_task` - Get cloud sync task by ID
+- `create_cloudsync_task` - Create a new cloud sync task
+- `delete_cloudsync_task` - Delete a cloud sync task
 - `run_cloudsync_task` - Run a cloud sync task
+
+### Task Management
+- `list_tasks` - List all running and recent tasks
+- `get_task_status` - Get status of a specific task
+- `abort_task` - Abort a running task
+
+### Kubernetes (SCALE)
+- `get_kubernetes_status` - Get Kubernetes cluster status
+- `get_kubernetes_nodes` - List Kubernetes nodes
+- `get_kubernetes_pods` - List Kubernetes pods
+- `get_kubernetes_services` - List Kubernetes services
+
+### Docker (SCALE)
+- `list_docker_images` - List all Docker images
+- `pull_docker_image` - Pull a Docker image
+
+### Batch Operations
+- `batch` - Execute multiple operations in a single call
+
+### Other
+- `get_enclosure` - Get enclosure information
+- `get_support` - Get support information
+
+### Jails Management (CORE only)
+- `list_jails` - List all jails
+- `get_jail` - Get jail details by ID
+- `get_jail_by_name` - Get jail details by name
+- `create_jail` - Create a new jail
+- `update_jail` - Update jail configuration
+- `delete_jail` - Delete a jail
+- `start_jail` - Start a jail
+- `stop_jail` - Stop a jail
+- `restart_jail` - Restart a jail
+- `clone_jail` - Clone a jail
+- `list_jail_fstabs` - List jail fstab entries
 
 ### Other
 - `get_enclosure` - Get enclosure information
@@ -266,6 +463,26 @@ cargo clippy
 
 ```bash
 cargo build --release
+```
+
+### Docker
+
+A Dockerfile is provided for containerized deployment:
+
+```bash
+# Build the image
+docker build -t truenas-master-mcp .
+
+# Run the container
+docker run -d \
+  -p 3000:3000 \
+  -e TRUENAS_SERVER_URL=https://truenas.local \
+  -e TRUENAS_API_KEY=your-api-key \
+  --name truenas-mcp \
+  truenas-master-mcp
+
+# Build for specific platform
+docker buildx build --platform linux/amd64,linux/arm64 -t truenas-master-mcp --push .
 ```
 
 ## API Compatibility

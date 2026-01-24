@@ -49,8 +49,15 @@
 //!
 //! *Either API key OR username/password required
 
+pub mod api_client;
+pub mod cache;
 pub mod client;
 pub mod config;
 pub mod error;
 pub mod server;
 pub mod tools;
+
+// Re-export commonly used types
+pub use crate::config::TrueNasConfig;
+pub use crate::error::{Result, TrueNasError};
+pub use crate::tools::TrueNasTools;

@@ -8,7 +8,123 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
+
+/// Tool categories for access control
+#[derive(Debug, Clone, PartialEq, JsonSchema)]
+pub enum ToolCategory {
+    Users,
+    Pools,
+    Datasets,
+    Shares,
+    Snapshots,
+    Iscsi,
+    Apps,
+    Network,
+    System,
+    All,
+}
+
+impl FromStr for ToolCategory {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "users" => Ok(ToolCategory::Users),
+            "pools" => Ok(ToolCategory::Pools),
+            "datasets" | "dataset" => Ok(ToolCategory::Datasets),
+            "shares" | "share" => Ok(ToolCategory::Shares),
+            "snapshots" | "snapshot" => Ok(ToolCategory::Snapshots),
+            "iscsi" => Ok(ToolCategory::Iscsi),
+            "apps" | "app" => Ok(ToolCategory::Apps),
+            "network" => Ok(ToolCategory::Network),
+            "system" => Ok(ToolCategory::System),
+            "all" => Ok(ToolCategory::All),
+            _ => Err("Unknown category"),
+        }
+    }
+}
+
+/// Tool access control configuration
+#[derive(Debug, Clone, Default, JsonSchema)]
+pub struct ToolConfig {
+    pub readonly: bool,
+    pub enabled_categories: Vec<ToolCategory>,
+    pub disabled_categories: Vec<ToolCategory>,
+}
+
+impl ToolConfig {
+    /// Create config from environment variables
+    pub fn from_env() -> Self {
+        let readonly = std::env::var("TRUENAS_READONLY")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false);
+
+        let enabled_categories: Vec<ToolCategory> = std::env::var("TRUENAS_ENABLED_CATEGORIES")
+            .ok()
+            .map(|v| {
+                v.split(',')
+                    .filter_map(|c| ToolCategory::from_str(c).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let disabled_categories: Vec<ToolCategory> = std::env::var("TRUENAS_DISABLED_CATEGORIES")
+            .ok()
+            .map(|v| {
+                v.split(',')
+                    .filter_map(|c| ToolCategory::from_str(c).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Self {
+            readonly,
+            enabled_categories: if enabled_categories.is_empty() {
+                vec![ToolCategory::All]
+            } else {
+                enabled_categories
+            },
+            disabled_categories,
+        }
+    }
+
+    /// Check if a category is allowed
+    pub fn is_category_allowed(&self, category: &ToolCategory) -> bool {
+        // Check if category is disabled
+        if self.disabled_categories.contains(category)
+            || self.disabled_categories.contains(&ToolCategory::All)
+        {
+            return false;
+        }
+
+        // Check if category is enabled (or All is enabled)
+        if self.enabled_categories.contains(&ToolCategory::All) {
+            return true;
+        }
+
+        self.enabled_categories.contains(category)
+    }
+
+    /// Check if a tool can be executed (considering readonly mode)
+    pub fn can_execute(
+        &self,
+        category: &ToolCategory,
+        is_modification: bool,
+    ) -> Result<(), String> {
+        // Check category access
+        if !self.is_category_allowed(category) {
+            return Err(format!("Category {:?} is not enabled", category));
+        }
+
+        // Check readonly mode for modification tools
+        if self.readonly && is_modification {
+            return Err("Server is in readonly mode - modification tools are disabled".to_string());
+        }
+
+        Ok(())
+    }
+}
 
 // Request types for tools - each tool gets its own struct with JsonSchema
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -277,6 +393,72 @@ pub struct GetAlertsRequest {}
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct CheckUpdatesRequest {}
 
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RebootSystemRequest {
+    /// Must be true to confirm this destructive operation
+    pub confirm: bool,
+    /// Delay in seconds before rebooting (default: 10)
+    #[serde(default)]
+    pub delay_seconds: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ShutdownSystemRequest {
+    /// Must be true to confirm this destructive operation
+    pub confirm: bool,
+    /// Delay in seconds before shutting down (default: 10)
+    #[serde(default)]
+    pub delay_seconds: Option<u32>,
+}
+
+// Pool Management
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ScrubPoolRequest {
+    pub pool_name: String,
+}
+
+// VMs
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateVmRequest {
+    pub name: String,
+    pub vcpus: i32,
+    pub memory: u64,
+    #[serde(default)]
+    pub disk_size: Option<u64>,
+    #[serde(default)]
+    pub iso: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct UpdateVmRequest {
+    pub vm_id: i32,
+    #[serde(default)]
+    pub updates: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteVmRequest {
+    pub vm_id: i32,
+    #[serde(default)]
+    pub force: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CloneVmRequest {
+    pub vm_id: i32,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RestartVmRequest {
+    pub vm_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct PowercycleVmRequest {
+    pub vm_id: i32,
+}
+
 // Disks
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct ListDisksRequest {}
@@ -311,6 +493,83 @@ pub struct ListCloudSyncTasksRequest {}
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct RunCloudSyncTaskRequest {
     pub task_id: i32,
+}
+
+// User Management
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateUserRequest {
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub uid: Option<i32>,
+    #[serde(default)]
+    pub group_ids: Option<Vec<i32>>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct UpdateUserRequest {
+    pub user_id: i32,
+    #[serde(default)]
+    pub updates: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteUserRequest {
+    pub user_id: i32,
+}
+
+// Jails (CORE only)
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetJailRequest {
+    pub jail_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct GetJailByNameRequest {
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CreateJailRequest {
+    pub name: String,
+    pub jail_base: String,
+    #[serde(default)]
+    pub ip4_addr: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct UpdateJailRequest {
+    pub jail_id: i32,
+    #[serde(default)]
+    pub updates: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct DeleteJailRequest {
+    pub jail_id: i32,
+    #[serde(default)]
+    pub force: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StartJailRequest {
+    pub jail_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct StopJailRequest {
+    pub jail_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct RestartJailRequest {
+    pub jail_id: i32,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct CloneJailRequest {
+    pub jail_id: i32,
+    pub name: String,
 }
 
 /// TrueNAS MCP Server
@@ -355,7 +614,12 @@ impl TrueNasServer {
         description = "List all users on the TrueNAS system"
     )]
     async fn list_users(&self) {
-        let _ = self.tools.list_users().await;
+        let result = self.tools.list_users().await;
+        // Errors will be logged but not silently dropped - the MCP protocol
+        // will handle errors at a higher level
+        if let Err(e) = result {
+            tracing::error!("list_users failed: {}", e);
+        }
     }
 
     #[tool(
@@ -363,7 +627,10 @@ impl TrueNasServer {
         description = "Get details of a specific user by ID"
     )]
     async fn get_user(&self, _req: Parameters<GetUserRequest>) {
-        let _ = self.tools.get_user(_req.0.user_id).await;
+        let result = self.tools.get_user(_req.0.user_id).await;
+        if let Err(e) = result {
+            tracing::error!("get_user failed: {}", e);
+        }
     }
 
     #[tool(
@@ -371,7 +638,52 @@ impl TrueNasServer {
         description = "Get details of a specific user by username"
     )]
     async fn get_user_by_username(&self, _req: Parameters<GetUserByUsernameRequest>) {
-        let _ = self.tools.get_user_by_username(&_req.0.username).await;
+        let result = self.tools.get_user_by_username(&_req.0.username).await;
+        if let Err(e) = result {
+            tracing::error!("get_user_by_username failed: {}", e);
+        }
+    }
+
+    #[tool(
+        name = "create_user",
+        description = "Create a new user on the TrueNAS system"
+    )]
+    async fn create_user(&self, _req: Parameters<CreateUserRequest>) {
+        let result = self
+            .tools
+            .create_user(
+                &_req.0.username,
+                &_req.0.password,
+                _req.0.uid,
+                _req.0.group_ids,
+            )
+            .await;
+        if let Err(e) = result {
+            tracing::error!("create_user failed: {}", e);
+        }
+    }
+
+    #[tool(
+        name = "update_user",
+        description = "Update an existing user on the TrueNAS system"
+    )]
+    async fn update_user(&self, _req: Parameters<UpdateUserRequest>) {
+        let updates = _req.0.updates.unwrap_or_default();
+        let result = self.tools.update_user(_req.0.user_id, updates).await;
+        if let Err(e) = result {
+            tracing::error!("update_user failed: {}", e);
+        }
+    }
+
+    #[tool(
+        name = "delete_user",
+        description = "Delete a user from the TrueNAS system"
+    )]
+    async fn delete_user(&self, _req: Parameters<DeleteUserRequest>) {
+        let result = self.tools.delete_user(_req.0.user_id).await;
+        if let Err(e) = result {
+            tracing::error!("delete_user failed: {}", e);
+        }
     }
 
     #[tool(
@@ -388,6 +700,11 @@ impl TrueNasServer {
     )]
     async fn get_pool_status(&self, _req: Parameters<GetPoolStatusRequest>) {
         let _ = self.tools.get_pool_status(&_req.0.pool_name).await;
+    }
+
+    #[tool(name = "scrub_pool", description = "Start a scrub on a storage pool")]
+    async fn scrub_pool(&self, _req: Parameters<ScrubPoolRequest>) {
+        let _ = self.tools.scrub_pool(&_req.0.pool_name).await;
     }
 
     #[tool(
@@ -775,6 +1092,58 @@ impl TrueNasServer {
         let _ = self.tools.restart_vm(_req.0.vm_id).await;
     }
 
+    #[tool(
+        name = "powercycle_vm",
+        description = "Power cycle a virtual machine (hard reset)"
+    )]
+    async fn powercycle_vm(&self, _req: Parameters<PowercycleVmRequest>) {
+        let _ = self.tools.powercycle_vm(_req.0.vm_id).await;
+    }
+
+    #[tool(
+        name = "create_vm",
+        description = "Create a new virtual machine on TrueNAS"
+    )]
+    async fn create_vm(&self, _req: Parameters<CreateVmRequest>) {
+        let _ = self
+            .tools
+            .create_vm(
+                &_req.0.name,
+                _req.0.vcpus,
+                _req.0.memory,
+                _req.0.disk_size,
+                _req.0.iso.as_deref(),
+            )
+            .await;
+    }
+
+    #[tool(
+        name = "update_vm",
+        description = "Update configuration of an existing virtual machine"
+    )]
+    async fn update_vm(&self, _req: Parameters<UpdateVmRequest>) {
+        let _ = self
+            .tools
+            .update_vm(_req.0.vm_id, _req.0.updates.unwrap_or_default())
+            .await;
+    }
+
+    #[tool(
+        name = "delete_vm",
+        description = "Delete a virtual machine from TrueNAS"
+    )]
+    async fn delete_vm(&self, _req: Parameters<DeleteVmRequest>) {
+        let _ = self
+            .tools
+            .delete_vm(_req.0.vm_id, _req.0.force.unwrap_or(false))
+            .await;
+    }
+
+    #[tool(name = "clone_vm", description = "Clone an existing virtual machine")]
+    async fn clone_vm(&self, _req: Parameters<CloneVmRequest>) {
+        let _ = self.tools.clone_vm(_req.0.vm_id, &_req.0.name).await;
+    }
+
     // === Network Management Tools ===
 
     #[tool(
@@ -840,14 +1209,26 @@ impl TrueNasServer {
         let _ = self.tools.check_for_updates().await;
     }
 
-    #[tool(name = "reboot_system", description = "Reboot the TrueNAS system")]
-    async fn reboot_system(&self) {
-        let _ = self.tools.reboot_system().await;
+    #[tool(
+        name = "reboot_system",
+        description = "Reboot the TrueNAS system. Requires confirm=true for safety."
+    )]
+    async fn reboot_system(&self, _req: Parameters<RebootSystemRequest>) {
+        let _ = self
+            .tools
+            .reboot_system(_req.0.confirm, _req.0.delay_seconds)
+            .await;
     }
 
-    #[tool(name = "shutdown_system", description = "Shutdown the TrueNAS system")]
-    async fn shutdown_system(&self) {
-        let _ = self.tools.shutdown_system().await;
+    #[tool(
+        name = "shutdown_system",
+        description = "Shutdown the TrueNAS system. Requires confirm=true for safety."
+    )]
+    async fn shutdown_system(&self, _req: Parameters<ShutdownSystemRequest>) {
+        let _ = self
+            .tools
+            .shutdown_system(_req.0.confirm, _req.0.delay_seconds)
+            .await;
     }
 
     // === Disk Management Tools ===
@@ -922,5 +1303,86 @@ impl TrueNasServer {
     #[tool(name = "get_support", description = "Get support information")]
     async fn get_support(&self) {
         let _ = self.tools.get_support().await;
+    }
+
+    // === Jails Tools (CORE only) ===
+
+    #[cfg(feature = "core")]
+    #[tool(name = "list_jails", description = "List all jails on TrueNAS CORE")]
+    async fn list_jails(&self) {
+        let _ = self.tools.list_jails().await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(
+        name = "get_jail",
+        description = "Get details of a specific jail by ID"
+    )]
+    async fn get_jail(&self, _req: Parameters<GetJailRequest>) {
+        let _ = self.tools.get_jail(_req.0.jail_id).await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(
+        name = "get_jail_by_name",
+        description = "Get details of a specific jail by name"
+    )]
+    async fn get_jail_by_name(&self, _req: Parameters<GetJailByNameRequest>) {
+        let _ = self.tools.get_jail_by_name(&_req.0.name).await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(
+        name = "create_jail",
+        description = "Create a new jail on TrueNAS CORE"
+    )]
+    async fn create_jail(&self, _req: Parameters<CreateJailRequest>) {
+        let _ = self
+            .tools
+            .create_jail(&_req.0.name, &_req.0.jail_base, _req.0.ip4_addr.as_deref())
+            .await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(
+        name = "update_jail",
+        description = "Update an existing jail on TrueNAS CORE"
+    )]
+    async fn update_jail(&self, _req: Parameters<UpdateJailRequest>) {
+        let updates = _req.0.updates.unwrap_or_default();
+        let _ = self.tools.update_jail(_req.0.jail_id, updates).await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(name = "delete_jail", description = "Delete a jail from TrueNAS CORE")]
+    async fn delete_jail(&self, _req: Parameters<DeleteJailRequest>) {
+        let _ = self
+            .tools
+            .delete_jail(_req.0.jail_id, _req.0.force.unwrap_or(false))
+            .await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(name = "start_jail", description = "Start a jail on TrueNAS CORE")]
+    async fn start_jail(&self, _req: Parameters<StartJailRequest>) {
+        let _ = self.tools.start_jail(_req.0.jail_id).await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(name = "stop_jail", description = "Stop a jail on TrueNAS CORE")]
+    async fn stop_jail(&self, _req: Parameters<StopJailRequest>) {
+        let _ = self.tools.stop_jail(_req.0.jail_id).await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(name = "restart_jail", description = "Restart a jail on TrueNAS CORE")]
+    async fn restart_jail(&self, _req: Parameters<RestartJailRequest>) {
+        let _ = self.tools.restart_jail(_req.0.jail_id).await;
+    }
+
+    #[cfg(feature = "core")]
+    #[tool(name = "clone_jail", description = "Clone a jail on TrueNAS CORE")]
+    async fn clone_jail(&self, _req: Parameters<CloneJailRequest>) {
+        let _ = self.tools.clone_jail(_req.0.jail_id, &_req.0.name).await;
     }
 }

@@ -1,21 +1,24 @@
 # =============================================================================
-# TrueNAS Master MCP - Git Ignore
+# TrueNAS Master MCP - .gitignore
 # =============================================================================
+# A comprehensive .gitignore for Rust MCP server projects
 
 # -----------------------------------------------------------------------------
 # Rust Build Outputs
 # -----------------------------------------------------------------------------
+# Cargo build directory
 /target/
-**/*.rs.bk
-*.pdb
-
-# Cargo.lock is now tracked by default in binary projects
-# Uncomment if you want to ignore it:
-# Cargo.lock
-
-# Build artifacts by profile
+# Per-profile build outputs
 target/*
-!target/.cargo/config
+# Backup files created by rustc
+**/*.rs.bk
+# PDB debug files (Windows)
+*.pdb
+# LLVM coverage data
+*.profraw
+*.profdata
+
+# Cargo.lock is tracked by default in binary projects
 
 # -----------------------------------------------------------------------------
 # IDE and Editor
@@ -27,6 +30,9 @@ target/*
 *~
 .netbeans/
 *.sublime-*
+.emacs.*
+\#*\#
+.tags
 
 # -----------------------------------------------------------------------------
 # Environment and Secrets
@@ -38,6 +44,8 @@ target/*
 *.key
 *.crt
 *.cert
+*.secret
+*.credentials
 
 # -----------------------------------------------------------------------------
 # Operating System Files
@@ -52,14 +60,18 @@ Thumbs.db
 *.pid
 *.seed
 *.pid.lock
+.linux*
 
 # -----------------------------------------------------------------------------
-# Logs
+# Logs and Debug Output
 # -----------------------------------------------------------------------------
 *.log
 logs/
 *.stderr
 *.stdout
+*.out
+debug/
+debug.log
 
 # -----------------------------------------------------------------------------
 # Testing and Coverage
@@ -68,6 +80,10 @@ coverage/
 htmlcov/
 .nyc_output/
 *.lcov
+*.cov
+tarpaulin-report.html
+cargo-test-results/
+tracing/
 
 # -----------------------------------------------------------------------------
 # Temporary Files
@@ -76,23 +92,21 @@ tmp/
 temp/
 *.tmp
 *.temp
+*.bak
+*.backup
+*_orig.*
+*.rej
+*.orig
+*.patch
 
 # -----------------------------------------------------------------------------
 # Docker
 # -----------------------------------------------------------------------------
 Dockerfile*
 docker-compose*.yml
+docker-compose*.yaml
 .docker/
-
-# -----------------------------------------------------------------------------
-# Backup Files
-# -----------------------------------------------------------------------------
-*~
-*.bak
-*.backup
-*_orig.*
-*.rej
-*.orig
+.container/
 
 # -----------------------------------------------------------------------------
 # Release and Distribution
@@ -103,9 +117,49 @@ build/
 *.whl
 *.pyc
 __pycache__/
+*.wasm
+
+# -----------------------------------------------------------------------------
+# Rust Specific
+# -----------------------------------------------------------------------------
+Cargo.lock
+# Uncomment above if you want to ignore Cargo.lock (not recommended for binaries)
+
+# -----------------------------------------------------------------------------
+# OpenAPI Generated Files
+# -----------------------------------------------------------------------------
+*.swagger.json
+*.openapi.json
 
 # -----------------------------------------------------------------------------
 # Pre-commit
 # -----------------------------------------------------------------------------
 .pre-commit-config.yaml
 !.pre-commit-config.yaml
+.pre-commit/
+
+# -----------------------------------------------------------------------------
+# MCP Server Files
+# -----------------------------------------------------------------------------
+!/.1mcprc
+!/.dockerignore
+*.mcp.json
+
+# -----------------------------------------------------------------------------
+# Documentation Build
+# -----------------------------------------------------------------------------
+docs/.vuepress/dist/
+docs/.vuepress/cache/
+site/
+
+# -----------------------------------------------------------------------------
+# Git
+# -----------------------------------------------------------------------------
+.gitattributes
+.gitmodules
+!.gitmodules
+
+# -----------------------------------------------------------------------------
+# Crates.io Publishing
+# -----------------------------------------------------------------------------
+*.crate

@@ -1,42 +1,326 @@
+use crate::api_client::ApiClient;
 use crate::client::TrueNasClient;
 use crate::error::Result;
+use crate::error::TrueNasError;
 use serde::{Deserialize, Serialize};
 
+/// Validate a path to prevent path traversal attacks
+pub(crate) fn validate_path(path: &str, field_name: &str) -> Result<()> {
+    // Check for path traversal attempts
+    if path.contains("..") {
+        return Err(TrueNasError::ValidationError(format!(
+            "{} contains path traversal sequence '..'",
+            field_name
+        )));
+    }
+    // Check for absolute paths (should be relative to pool/dataset)
+    if path.starts_with('/') {
+        return Err(TrueNasError::ValidationError(format!(
+            "{} must be a relative path, not absolute",
+            field_name
+        )));
+    }
+    // Check for null bytes
+    if path.contains('\0') {
+        return Err(TrueNasError::ValidationError(format!(
+            "{} contains null bytes",
+            field_name
+        )));
+    }
+    Ok(())
+}
+
+/// Represents a background task on TrueNAS
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Task {
+    /// Unique identifier for the task
+    pub id: i32,
+    /// Task method name
+    pub method: String,
+    /// Task arguments
+    #[serde(default)]
+    pub args: Option<serde_json::Value>,
+    /// Current state (e.g., "WAITING", "RUNNING", "SUCCESS", "FAILED")
+    pub state: String,
+    /// Task progress (0-100)
+    #[serde(default)]
+    pub progress: Option<u32>,
+    /// Error message if failed
+    #[serde(default)]
+    pub error: Option<String>,
+    /// When the task was created
+    #[serde(default)]
+    pub created_at: Option<i64>,
+    /// When the task finished (if completed)
+    #[serde(default)]
+    pub finished_at: Option<i64>,
+}
+
 /// TrueNAS API response types
+/// Represents a user account on TrueNAS
 #[derive(Debug, Deserialize, Serialize)]
 pub struct User {
+    /// Unique identifier for the user
     pub id: i32,
+    /// Login username
     pub username: String,
+    /// User ID number
     pub uid: i32,
+    /// Home directory path
     #[serde(default)]
     pub home: Option<String>,
+    /// Email address
     #[serde(default)]
     pub email: Option<String>,
+    /// Full name for display
     #[serde(default)]
     pub full_name: Option<String>,
 }
 
+/// Pagination parameters for list operations
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct PaginationParams {
+    /// Offset in the list (default: 0)
+    #[serde(default)]
+    pub offset: Option<u32>,
+    /// Limit number of results (default: 50, 0 means all)
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Order by field (e.g., "name", "-created", "status")
+    #[serde(default)]
+    pub order_by: Option<String>,
+}
+
+/// Filter condition for list operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FilterCondition {
+    /// Field name to filter on
+    pub field: String,
+    /// Operator: eq, ne, gt, gte, lt, lte, contains, startswith, endswith, in
+    pub operator: String,
+    /// Value to compare against
+    pub value: serde_json::Value,
+}
+
+/// Filter parameters for list operations
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct FilterParams {
+    /// AND conditions (all must match)
+    #[serde(default)]
+    pub and_conditions: Vec<FilterCondition>,
+    /// OR conditions (any must match)
+    #[serde(default)]
+    pub or_conditions: Vec<FilterCondition>,
+}
+
+/// Combined pagination and filter parameters
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ListParams {
+    /// Pagination settings
+    #[serde(flatten)]
+    pub pagination: PaginationParams,
+    /// Filter settings
+    #[serde(flatten)]
+    pub filters: FilterParams,
+}
+
+/// Paginated response wrapper
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PaginatedResponse<T> {
+    /// Total number of items matching the query
+    pub total: u64,
+    /// Items in this page
+    pub items: Vec<T>,
+    /// Current offset
+    pub offset: u32,
+    /// Limit that was applied
+    pub limit: u32,
+    /// Whether there are more results
+    pub has_more: bool,
+}
+
+impl<T> PaginatedResponse<T> {
+    /// Create a new paginated response
+    pub fn new(items: Vec<T>, total: u64, offset: u32, limit: u32) -> Self {
+        let has_more = (offset as u64 + items.len() as u64) < total;
+        Self {
+            total,
+            items,
+            offset,
+            limit,
+            has_more,
+        }
+    }
+}
+
+/// Helper methods for filtering and pagination
+impl FilterCondition {
+    /// Compare two JSON values for ordering
+    fn compare_values(a: &serde_json::Value, b: &serde_json::Value) -> Option<std::cmp::Ordering> {
+        match (a, b) {
+            (serde_json::Value::Number(an), serde_json::Value::Number(bn)) => {
+                an.as_f64().and_then(|a_f| {
+                    bn.as_f64()
+                        .map(|b_f| a_f.partial_cmp(&b_f).unwrap_or(std::cmp::Ordering::Equal))
+                })
+            }
+            (serde_json::Value::String(as_str), serde_json::Value::String(bs_str)) => {
+                Some(as_str.cmp(bs_str))
+            }
+            (serde_json::Value::Bool(ab), serde_json::Value::Bool(bb)) => Some(ab.cmp(bb)),
+            _ => None,
+        }
+    }
+
+    /// Check if a JSON value matches this filter condition
+    pub fn matches(&self, value: &serde_json::Value) -> bool {
+        let target = match value.get(&self.field) {
+            Some(v) => v,
+            None => return false,
+        };
+
+        match self.operator.as_str() {
+            "eq" => target == &self.value,
+            "ne" => target != &self.value,
+            "gt" => Self::compare_values(target, &self.value) == Some(std::cmp::Ordering::Greater),
+            "gte" => {
+                let cmp = Self::compare_values(target, &self.value);
+                cmp == Some(std::cmp::Ordering::Greater) || cmp == Some(std::cmp::Ordering::Equal)
+            }
+            "lt" => Self::compare_values(target, &self.value) == Some(std::cmp::Ordering::Less),
+            "lte" => {
+                let cmp = Self::compare_values(target, &self.value);
+                cmp == Some(std::cmp::Ordering::Less) || cmp == Some(std::cmp::Ordering::Equal)
+            }
+            "contains" => target
+                .as_str()
+                .map(|s| s.contains(self.value.as_str().unwrap_or("")))
+                .unwrap_or(false),
+            "startswith" => target
+                .as_str()
+                .map(|s| s.starts_with(self.value.as_str().unwrap_or("")))
+                .unwrap_or(false),
+            "endswith" => target
+                .as_str()
+                .map(|s| s.ends_with(self.value.as_str().unwrap_or("")))
+                .unwrap_or(false),
+            "in" => self
+                .value
+                .as_array()
+                .map(|arr| arr.iter().any(|v| v == target))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+}
+
+impl FilterParams {
+    /// Check if an item matches all filter conditions
+    pub fn matches(&self, item: &serde_json::Value) -> bool {
+        // Check AND conditions
+        for cond in &self.and_conditions {
+            if !cond.matches(item) {
+                return false;
+            }
+        }
+        // If there are OR conditions, at least one must match
+        if !self.or_conditions.is_empty() {
+            let or_matches = self.or_conditions.iter().any(|cond| cond.matches(item));
+            if !or_matches {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl PaginationParams {
+    /// Apply ordering to a slice
+    pub fn apply_ordering<T>(&self, items: &mut Vec<T>)
+    where
+        T: Clone + Serialize,
+    {
+        if let Some(ref order_by) = self.order_by {
+            let mut descending = false;
+            let field = if order_by.starts_with('-') {
+                descending = true;
+                &order_by[1..]
+            } else {
+                order_by.as_str()
+            };
+
+            let field = field.to_string();
+            items.sort_by(|a, b| {
+                let a_val = serde_json::to_value(a)
+                    .ok()
+                    .and_then(|v| v.get(&field).cloned());
+                let b_val = serde_json::to_value(b)
+                    .ok()
+                    .and_then(|v| v.get(&field).cloned());
+                match (a_val, b_val) {
+                    (Some(av), Some(bv)) => {
+                        let cmp = FilterCondition::compare_values(&av, &bv)
+                            .unwrap_or(std::cmp::Ordering::Equal);
+                        if descending { cmp.reverse() } else { cmp }
+                    }
+                    _ => std::cmp::Ordering::Equal,
+                }
+            });
+        }
+    }
+
+    /// Apply pagination to a slice and return a subset
+    pub fn apply_pagination<T: Clone>(&self, items: &[T]) -> (Vec<T>, u32, u32) {
+        let offset = self.offset.unwrap_or(0);
+        let limit = self.limit.unwrap_or(50);
+
+        let total_len = items.len() as u32;
+        let start = offset.min(total_len) as usize;
+        let end_usize = items.len();
+        let end = if limit == 0 {
+            end_usize
+        } else {
+            ((offset + limit).min(total_len) as usize).min(end_usize)
+        };
+
+        (items[start..end].to_vec(), offset, limit)
+    }
+}
+
+/// Represents a storage pool on TrueNAS
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Pool {
+    /// Pool name (e.g., "tank")
     pub name: String,
+    /// Unique GUID identifier
     pub guid: String,
+    /// Current status (e.g., "ONLINE", "OFFLINE", "DEGRADED")
     pub status: String,
+    /// Total pool size in bytes
     pub size: u64,
+    /// Available free space in bytes
     pub free: u64,
+    /// Optional description
     #[serde(default)]
     pub description: Option<String>,
 }
 
+/// Represents a ZFS dataset on TrueNAS
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Dataset {
+    /// Full dataset path (e.g., "tank/data")
     pub name: String,
+    /// Parent pool name
     pub pool: String,
+    /// Mount point path
     #[serde(default)]
     pub mountpoint: Option<String>,
+    /// Optional comments
     #[serde(default)]
     pub comments: Option<String>,
 }
 
+/// Represents an SMB/CIFS share on TrueNAS
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SmbShare {
     pub id: i32,
@@ -79,7 +363,7 @@ pub struct SystemInfo {
 }
 
 /// App information for TrueNAS apps/jails
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppInfo {
     pub name: String,
     #[serde(default)]
@@ -107,7 +391,7 @@ pub struct Group {
 }
 
 /// VM response type
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Vm {
     pub id: i32,
     pub name: String,
@@ -175,7 +459,7 @@ pub struct CloudCredential {
 }
 
 /// Service response
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Service {
     pub id: i32,
     pub service: String,
@@ -184,7 +468,7 @@ pub struct Service {
 }
 
 /// System alerts
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Alert {
     pub id: String,
     pub level: String,
@@ -263,7 +547,7 @@ pub struct SupportInfo {
 }
 
 /// Disk response
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Disk {
     pub identifier: String,
     pub name: String,
@@ -502,19 +786,65 @@ pub struct DatasetQuota {
     pub used: u64,
 }
 
-/// Tool handlers for TrueNAS operations
+/// Tool handlers for TrueNAS API operations
+///
+/// This struct provides methods for interacting with the TrueNAS REST API.
+/// Each method corresponds to a specific TrueNAS management operation.
+///
+/// # Example
+///
+/// ```ignore
+/// use truenas_master_mcp::client::TrueNasClient;
+/// use truenas_master_mcp::config::TrueNasConfig;
+///
+/// let config = TrueNasConfig {
+///     server_url: "https://truenas.local".to_string(),
+///     api_key: Some("your-api-key".to_string()),
+///     ..Default::default()
+/// };
+///
+/// let client = TrueNasClient::new(config).unwrap();
+/// let tools = TrueNasTools::new(client);
+///
+/// let users = tools.list_users().await.unwrap();
+/// ```
 #[derive(Debug)]
 pub struct TrueNasTools {
     client: TrueNasClient,
+    /// Optional API client for additional operations
+    api_client: Option<ApiClient>,
 }
 
 impl TrueNasTools {
+    /// Create a new TrueNasTools instance
     pub fn new(client: TrueNasClient) -> Self {
-        Self { client }
+        Self {
+            client,
+            api_client: None,
+        }
+    }
+
+    /// Create with an API client
+    pub fn with_api_client(client: TrueNasClient, api_client: ApiClient) -> Self {
+        Self {
+            client,
+            api_client: Some(api_client),
+        }
+    }
+
+    /// Check if using API client
+    pub fn has_api_client(&self) -> bool {
+        self.api_client.is_some()
+    }
+
+    /// Get access to the API client if available
+    pub fn api_client(&self) -> Option<&ApiClient> {
+        self.api_client.as_ref()
     }
 
     // === User Management ===
 
+    /// List all user accounts on the TrueNAS system
     pub async fn list_users(&self) -> Result<Vec<User>> {
         self.client.get("/api/v2.0/user").await
     }
@@ -571,13 +901,21 @@ impl TrueNasTools {
     }
 
     pub async fn get_dataset(&self, dataset_path: &str) -> Result<Dataset> {
+        validate_path(dataset_path, "dataset_path")?;
         let encoded = urlencoding::encode(dataset_path);
         self.client
             .get(&format!("/api/v2.0/pool/dataset/{}", encoded))
             .await
     }
 
+    /// Get dataset by path (alias for get_dataset)
+    #[allow(dead_code)]
+    pub async fn get_dataset_by_path(&self, path: &str) -> Result<Dataset> {
+        self.get_dataset(path).await
+    }
+
     pub async fn create_dataset(&self, pool_name: &str, dataset_name: &str) -> Result<Dataset> {
+        validate_path(dataset_name, "dataset_name")?;
         #[derive(Serialize)]
         struct CreateDatasetRequest {
             name: String,
@@ -592,9 +930,24 @@ impl TrueNasTools {
     }
 
     pub async fn delete_dataset(&self, dataset_path: &str) -> Result<()> {
+        validate_path(dataset_path, "dataset_path")?;
         let encoded = urlencoding::encode(dataset_path);
         self.client
             .delete(&format!("/api/v2.0/pool/dataset/{}", encoded))
+            .await
+    }
+
+    /// Update a dataset's properties
+    #[allow(dead_code)]
+    pub async fn update_dataset(
+        &self,
+        dataset_path: &str,
+        updates: serde_json::Value,
+    ) -> Result<Dataset> {
+        validate_path(dataset_path, "dataset_path")?;
+        let encoded = urlencoding::encode(dataset_path);
+        self.client
+            .put(&format!("/api/v2.0/pool/dataset/{}", encoded), &updates)
             .await
     }
 
@@ -610,6 +963,7 @@ impl TrueNasTools {
         path: &str,
         comment: Option<&str>,
     ) -> Result<SmbShare> {
+        validate_path(path, "path")?;
         #[derive(Serialize)]
         struct CreateSmbRequest {
             name: String,
@@ -646,6 +1000,10 @@ impl TrueNasTools {
         paths: Vec<String>,
         comment: String,
     ) -> Result<NfsExport> {
+        // Validate all paths
+        for path in &paths {
+            validate_path(path, "path")?;
+        }
         #[derive(Serialize)]
         struct CreateNfsRequest {
             paths: Vec<String>,
@@ -672,6 +1030,8 @@ impl TrueNasTools {
     }
 
     pub async fn create_snapshot(&self, dataset: &str, snapshot_name: &str) -> Result<Snapshot> {
+        validate_path(dataset, "dataset")?;
+        validate_path(snapshot_name, "snapshot_name")?;
         #[derive(Serialize)]
         struct CreateSnapshotRequest {
             dataset: String,
@@ -691,6 +1051,55 @@ impl TrueNasTools {
     pub async fn delete_snapshot(&self, snapshot_id: &str) -> Result<()> {
         self.client
             .delete(&format!("/api/v2.0/zfs/snapshot/{}", snapshot_id))
+            .await
+    }
+
+    /// Rollback a dataset to a specific snapshot
+    #[allow(dead_code)]
+    pub async fn rollback_snapshot(&self, dataset: &str, snapshot_name: &str) -> Result<()> {
+        #[derive(Serialize)]
+        struct RollbackRequest {
+            dataset: String,
+            name: String,
+            force: bool,
+        }
+        self.client
+            .post(
+                "/api/v2.0/zfs/snapshot/rollback",
+                &RollbackRequest {
+                    dataset: dataset.to_string(),
+                    name: snapshot_name.to_string(),
+                    force: true,
+                },
+            )
+            .await
+    }
+
+    /// Clone a snapshot to a new dataset
+    #[allow(dead_code)]
+    pub async fn clone_snapshot(&self, snapshot_id: &str, target_name: &str) -> Result<Dataset> {
+        #[derive(Serialize)]
+        struct CloneRequest {
+            snapshot: String,
+            dataset_dst: String,
+        }
+        self.client
+            .post(
+                "/api/v2.0/zfs/snapshot/clone",
+                &CloneRequest {
+                    snapshot: snapshot_id.to_string(),
+                    dataset_dst: target_name.to_string(),
+                },
+            )
+            .await
+    }
+
+    /// Get all snapshots for a specific dataset
+    #[allow(dead_code)]
+    pub async fn get_dataset_snapshots(&self, dataset: &str) -> Result<Vec<Snapshot>> {
+        let encoded = urlencoding::encode(dataset);
+        self.client
+            .get(&format!("/api/v2.0/zfs/snapshot?dataset={}", encoded))
             .await
     }
 
@@ -1492,6 +1901,15 @@ impl TrueNasTools {
             .await
     }
 
+    /// Create replication task from JSON
+    #[allow(dead_code)]
+    pub async fn create_replication_task_json(
+        &self,
+        task: serde_json::Value,
+    ) -> Result<ReplicationTask> {
+        self.client.post("/api/v2.0/replication", &task).await
+    }
+
     /// Delete replication task
     #[allow(dead_code)]
     pub async fn delete_replication_task(&self, task_id: i32, force: bool) -> Result<()> {
@@ -1558,6 +1976,15 @@ impl TrueNasTools {
                 },
             )
             .await
+    }
+
+    /// Create cloud sync task from JSON
+    #[allow(dead_code)]
+    pub async fn create_cloudsync_task_json(
+        &self,
+        task: serde_json::Value,
+    ) -> Result<CloudSyncTask> {
+        self.client.post("/api/v2.0/cloudsync", &task).await
     }
 
     /// Delete cloud sync task
@@ -1645,15 +2072,47 @@ impl TrueNasTools {
     }
 
     /// Reboot system
+    ///
+    /// # Safety
+    /// This will immediately reboot the TrueNAS system.
+    /// Use `confirm = true` to explicitly confirm this destructive operation.
     #[allow(dead_code)]
-    pub async fn reboot_system(&self) -> Result<()> {
-        self.client.post("/api/v2.0/system/reboot", &()).await
+    pub async fn reboot_system(&self, confirm: bool, delay_seconds: Option<u32>) -> Result<()> {
+        if !confirm {
+            return Err(TrueNasError::ValidationError(
+                "Reboot requires confirmation. Set confirm=true to proceed.".to_string(),
+            ));
+        }
+        #[derive(Serialize)]
+        struct RebootRequest {
+            delay: u32,
+        }
+        let delay = delay_seconds.unwrap_or(10);
+        self.client
+            .post("/api/v2.0/system/reboot", &RebootRequest { delay })
+            .await
     }
 
     /// Shutdown system
+    ///
+    /// # Safety
+    /// This will immediately shut down the TrueNAS system.
+    /// Use `confirm = true` to explicitly confirm this destructive operation.
     #[allow(dead_code)]
-    pub async fn shutdown_system(&self) -> Result<()> {
-        self.client.post("/api/v2.0/system/shutdown", &()).await
+    pub async fn shutdown_system(&self, confirm: bool, delay_seconds: Option<u32>) -> Result<()> {
+        if !confirm {
+            return Err(TrueNasError::ValidationError(
+                "Shutdown requires confirmation. Set confirm=true to proceed.".to_string(),
+            ));
+        }
+        #[derive(Serialize)]
+        struct ShutdownRequest {
+            delay: u32,
+        }
+        let delay = delay_seconds.unwrap_or(10);
+        self.client
+            .post("/api/v2.0/system/shutdown", &ShutdownRequest { delay })
+            .await
     }
 
     /// Check for updates
@@ -2358,6 +2817,12 @@ impl TrueNasTools {
             .await
     }
 
+    /// Refresh all catalogs
+    #[allow(dead_code)]
+    pub async fn refresh_catalogs(&self) -> Result<serde_json::Value> {
+        self.client.post("/api/v2.0/catalog", &()).await
+    }
+
     /// Delete catalog
     #[allow(dead_code)]
     pub async fn delete_catalog(&self, catalog_id: &str) -> Result<()> {
@@ -2462,6 +2927,14 @@ impl TrueNasTools {
             .await
     }
 
+    /// Run rsync task
+    #[allow(dead_code)]
+    pub async fn run_rsync_task(&self, task_id: i32) -> Result<serde_json::Value> {
+        self.client
+            .post(&format!("/api/v2.0/rsync/tasks/{}/run", task_id), &())
+            .await
+    }
+
     /// List rsync modules
     #[allow(dead_code)]
     pub async fn list_rsync_modules(&self) -> Result<Vec<RsyncModule>> {
@@ -2524,6 +2997,15 @@ impl TrueNasTools {
     #[allow(dead_code)]
     pub async fn get_smart_config(&self) -> Result<SmartConfig> {
         self.client.get("/api/v2.0/smart/config").await
+    }
+
+    /// Get SMART status for a disk
+    #[allow(dead_code)]
+    pub async fn get_smart_status(&self, disk_name: &str) -> Result<serde_json::Value> {
+        let encoded = urlencoding::encode(disk_name);
+        self.client
+            .get(&format!("/api/v2.0/disk/{}/smart", encoded))
+            .await
     }
 
     /// Update SMART config
@@ -2681,5 +3163,542 @@ impl TrueNasTools {
         self.client
             .delete(&format!("/api/v2.0/network/interface/ip/{}", ip_id))
             .await
+    }
+
+    // === Tasks ===
+
+    /// List all tasks
+    #[allow(dead_code)]
+    pub async fn list_tasks(&self) -> Result<Vec<Task>> {
+        self.client.get("/api/v2.0/core/get_tasks").await
+    }
+
+    /// Get task status
+    #[allow(dead_code)]
+    pub async fn get_task_status(&self, task_id: i32) -> Result<Task> {
+        self.client
+            .get(&format!("/api/v2.0/core/get_tasks/{}", task_id))
+            .await
+    }
+
+    /// Abort a task
+    #[allow(dead_code)]
+    pub async fn abort_task(&self, task_id: i32) -> Result<()> {
+        self.client
+            .post(&format!("/api/v2.0/core/abort_task/{}", task_id), &())
+            .await
+    }
+
+    // === Kubernetes ===
+
+    /// Get Kubernetes nodes
+    #[allow(dead_code)]
+    pub async fn get_kubernetes_nodes(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/kubernetes/node").await
+    }
+
+    /// Get Kubernetes pods
+    #[allow(dead_code)]
+    pub async fn get_kubernetes_pods(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/kubernetes/pod").await
+    }
+
+    /// Get Kubernetes services
+    #[allow(dead_code)]
+    pub async fn get_kubernetes_services(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/kubernetes/service").await
+    }
+
+    // === Docker ===
+
+    /// List Docker images
+    #[allow(dead_code)]
+    pub async fn list_docker_images(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/docker/images").await
+    }
+
+    /// Pull Docker image
+    #[allow(dead_code)]
+    pub async fn pull_docker_image(&self, image: &str, tag: &str) -> Result<serde_json::Value> {
+        #[derive(Serialize)]
+        struct PullRequest {
+            from_image: String,
+            tag: String,
+        }
+        self.client
+            .post(
+                "/api/v2.0/docker/images/pull",
+                &PullRequest {
+                    from_image: image.to_string(),
+                    tag: tag.to_string(),
+                },
+            )
+            .await
+    }
+
+    // === Cloud Credentials ===
+
+    /// Create cloud credential
+    #[allow(dead_code)]
+    pub async fn create_cloud_credential(
+        &self,
+        name: &str,
+        provider: &str,
+        attributes: serde_json::Value,
+    ) -> Result<CloudCredential> {
+        #[derive(Serialize)]
+        struct CreateRequest {
+            name: String,
+            provider: String,
+            attributes: serde_json::Value,
+        }
+        self.client
+            .post(
+                "/api/v2.0/cloudsync/credentials",
+                &CreateRequest {
+                    name: name.to_string(),
+                    provider: provider.to_string(),
+                    attributes,
+                },
+            )
+            .await
+    }
+
+    /// Delete cloud credential
+    #[allow(dead_code)]
+    pub async fn delete_cloud_credential(&self, cred_id: i32) -> Result<()> {
+        self.client
+            .delete(&format!("/api/v2.0/cloudsync/credentials/{}", cred_id))
+            .await
+    }
+
+    // === SSH Connections ===
+
+    /// List SSH connections
+    #[allow(dead_code)]
+    pub async fn list_ssh_connections(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/ssh/connection").await
+    }
+
+    /// Create SSH connection
+    #[allow(dead_code)]
+    pub async fn create_ssh_connection(
+        &self,
+        connection: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.client
+            .post("/api/v2.0/ssh/connection", &connection)
+            .await
+    }
+
+    /// Delete SSH connection
+    #[allow(dead_code)]
+    pub async fn delete_ssh_connection(&self, connection_id: i32) -> Result<()> {
+        self.client
+            .delete(&format!("/api/v2.0/ssh/connection/{}", connection_id))
+            .await
+    }
+
+    // === TFTP ===
+
+    /// List TFTP services
+    #[allow(dead_code)]
+    pub async fn list_tftp_services(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/tftp").await
+    }
+
+    // === Alerts & Events ===
+
+    /// Get alert classes/categories
+    #[allow(dead_code)]
+    pub async fn get_alert_classes(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/system/alert/classes").await
+    }
+
+    /// Dismiss an alert
+    #[allow(dead_code)]
+    pub async fn dismiss_alert(&self, alert_id: &str) -> Result<()> {
+        let encoded = urlencoding::encode(alert_id);
+        self.client
+            .delete(&format!("/api/v2.0/system/alert/{}", encoded))
+            .await
+    }
+
+    /// Clear all alerts
+    #[allow(dead_code)]
+    pub async fn clear_all_alerts(&self) -> Result<serde_json::Value> {
+        self.client.delete("/api/v2.0/system/alert").await
+    }
+
+    /// Get alert destinations (email, SNMP, etc.)
+    #[allow(dead_code)]
+    pub async fn get_alert_destinations(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/system/alert/destination").await
+    }
+
+    /// Create alert destination
+    #[allow(dead_code)]
+    pub async fn create_alert_destination(
+        &self,
+        destination: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.client
+            .post("/api/v2.0/system/alert/destination", &destination)
+            .await
+    }
+
+    // === System Events (for AI notifications) ===
+
+    /// Get recent system events/logs
+    #[allow(dead_code)]
+    pub async fn get_system_events(&self, limit: Option<u32>) -> Result<serde_json::Value> {
+        let limit = limit.unwrap_or(50);
+        self.client
+            .get(&format!("/api/v2.0/system/log/{}?limit={}", limit, limit))
+            .await
+    }
+
+    /// Get disk health/smart status
+    #[allow(dead_code)]
+    pub async fn get_disk_health(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/disk").await
+    }
+
+    /// Get pool expansion status
+    #[allow(dead_code)]
+    pub async fn get_pool_expansion_status(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/pool/expansion").await
+    }
+
+    /// Get async task queue status
+    #[allow(dead_code)]
+    pub async fn get_task_queue_status(&self) -> Result<serde_json::Value> {
+        self.client.get("/api/v2.0/core/get_jobs").await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // === Path Validation Tests ===
+
+    #[test]
+    fn test_validate_path_rejects_path_traversal() {
+        let result = validate_path("../etc/passwd", "path");
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("path traversal"));
+        }
+    }
+
+    #[test]
+    fn test_validate_path_rejects_absolute_path() {
+        let result = validate_path("/absolute/path", "path");
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("relative path"));
+        }
+    }
+
+    #[test]
+    fn test_validate_path_rejects_null_bytes() {
+        let result = validate_path("path\0with\null", "path");
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("null bytes"));
+        }
+    }
+
+    #[test]
+    fn test_validate_path_accepts_relative_path() {
+        let result = validate_path("tank/data", "path");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_path_accepts_simple_name() {
+        let result = validate_path("mydataset", "path");
+        assert!(result.is_ok());
+    }
+
+    // === FilterCondition Tests ===
+
+    #[test]
+    fn test_filter_condition_eq() {
+        let cond = FilterCondition {
+            field: "status".to_string(),
+            operator: "eq".to_string(),
+            value: json!("RUNNING"),
+        };
+        let item = json!({"status": "RUNNING"});
+        assert!(cond.matches(&item));
+
+        let item2 = json!({"status": "STOPPED"});
+        assert!(!cond.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_condition_ne() {
+        let cond = FilterCondition {
+            field: "status".to_string(),
+            operator: "ne".to_string(),
+            value: json!("RUNNING"),
+        };
+        let item = json!({"status": "STOPPED"});
+        assert!(cond.matches(&item));
+
+        let item2 = json!({"status": "RUNNING"});
+        assert!(!cond.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_condition_gt() {
+        let cond = FilterCondition {
+            field: "count".to_string(),
+            operator: "gt".to_string(),
+            value: json!(10),
+        };
+        let item = json!({"count": 15});
+        assert!(cond.matches(&item));
+
+        let item2 = json!({"count": 5});
+        assert!(!cond.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_condition_contains() {
+        let cond = FilterCondition {
+            field: "name".to_string(),
+            operator: "contains".to_string(),
+            value: json!("test"),
+        };
+        let item = json!({"name": "mytestfile"});
+        assert!(cond.matches(&item));
+
+        let item2 = json!({"name": "otherfile"});
+        assert!(!cond.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_condition_startswith() {
+        let cond = FilterCondition {
+            field: "name".to_string(),
+            operator: "startswith".to_string(),
+            value: json!("test"),
+        };
+        let item = json!({"name": "test123"});
+        assert!(cond.matches(&item));
+
+        let item2 = json!({"name": "123test"});
+        assert!(!cond.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_condition_endswith() {
+        let cond = FilterCondition {
+            field: "name".to_string(),
+            operator: "endswith".to_string(),
+            value: json!(".log"),
+        };
+        let item = json!({"name": "app.log"});
+        assert!(cond.matches(&item));
+
+        let item2 = json!({"name": "log.txt"});
+        assert!(!cond.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_condition_in() {
+        let cond = FilterCondition {
+            field: "status".to_string(),
+            operator: "in".to_string(),
+            value: json!(["RUNNING", "STARTING"]),
+        };
+        let item = json!({"status": "RUNNING"});
+        assert!(cond.matches(&item));
+
+        let item2 = json!({"status": "STOPPED"});
+        assert!(!cond.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_condition_missing_field() {
+        let cond = FilterCondition {
+            field: "missing".to_string(),
+            operator: "eq".to_string(),
+            value: json!("value"),
+        };
+        let item = json!({"other": "value"});
+        assert!(!cond.matches(&item));
+    }
+
+    // === FilterParams Tests ===
+
+    #[test]
+    fn test_filter_params_and_conditions() {
+        let params = FilterParams {
+            and_conditions: vec![
+                FilterCondition {
+                    field: "status".to_string(),
+                    operator: "eq".to_string(),
+                    value: json!("RUNNING"),
+                },
+                FilterCondition {
+                    field: "name".to_string(),
+                    operator: "contains".to_string(),
+                    value: json!("test"),
+                },
+            ],
+            or_conditions: vec![],
+        };
+
+        let item = json!({"status": "RUNNING", "name": "testfile"});
+        assert!(params.matches(&item));
+
+        let item2 = json!({"status": "STOPPED", "name": "testfile"});
+        assert!(!params.matches(&item2));
+    }
+
+    #[test]
+    fn test_filter_params_or_conditions() {
+        let params = FilterParams {
+            and_conditions: vec![],
+            or_conditions: vec![
+                FilterCondition {
+                    field: "status".to_string(),
+                    operator: "eq".to_string(),
+                    value: json!("RUNNING"),
+                },
+                FilterCondition {
+                    field: "status".to_string(),
+                    operator: "eq".to_string(),
+                    value: json!("STARTING"),
+                },
+            ],
+        };
+
+        let item = json!({"status": "RUNNING"});
+        assert!(params.matches(&item));
+
+        let item2 = json!({"status": "STARTING"});
+        assert!(params.matches(&item2));
+
+        let item3 = json!({"status": "STOPPED"});
+        assert!(!params.matches(&item3));
+    }
+
+    #[test]
+    fn test_filter_params_empty() {
+        let params = FilterParams::default();
+        let item = json!({"any": "value"});
+        assert!(params.matches(&item));
+    }
+
+    // === PaginationParams Tests ===
+
+    #[test]
+    fn test_pagination_apply_pagination_no_limit() {
+        let params = PaginationParams {
+            offset: Some(0),
+            limit: Some(0),
+            order_by: None,
+        };
+
+        let items: Vec<i32> = (1..=100).collect();
+        let (result, offset, limit) = params.apply_pagination(&items);
+        assert_eq!(result.len(), 100);
+        assert_eq!(offset, 0);
+        assert_eq!(limit, 0);
+    }
+
+    #[test]
+    fn test_pagination_apply_pagination_with_limit() {
+        let params = PaginationParams {
+            offset: Some(10),
+            limit: Some(5),
+            order_by: None,
+        };
+
+        let items: Vec<i32> = (1..=100).collect();
+        let (result, offset, limit) = params.apply_pagination(&items);
+        assert_eq!(result.len(), 5);
+        assert_eq!(result, vec![11, 12, 13, 14, 15]);
+        assert_eq!(offset, 10);
+        assert_eq!(limit, 5);
+    }
+
+    #[test]
+    fn test_pagination_offset_beyond_length() {
+        let params = PaginationParams {
+            offset: Some(50),
+            limit: Some(10),
+            order_by: None,
+        };
+
+        let items: Vec<i32> = (1..=30).collect();
+        let (result, offset, limit) = params.apply_pagination(&items);
+        assert!(result.is_empty());
+        assert_eq!(offset, 50);
+        assert_eq!(limit, 10);
+    }
+
+    #[test]
+    fn test_pagination_order_by_ascending() {
+        let params = PaginationParams {
+            offset: None,
+            limit: None,
+            order_by: Some("name".to_string()),
+        };
+
+        let mut items = vec![
+            json!({"name": "c", "value": 3}),
+            json!({"name": "a", "value": 1}),
+            json!({"name": "b", "value": 2}),
+        ];
+
+        params.apply_ordering(&mut items);
+        assert_eq!(items[0]["name"], "a");
+        assert_eq!(items[1]["name"], "b");
+        assert_eq!(items[2]["name"], "c");
+    }
+
+    #[test]
+    fn test_pagination_order_by_descending() {
+        let params = PaginationParams {
+            offset: None,
+            limit: None,
+            order_by: Some("-name".to_string()),
+        };
+
+        let mut items = vec![
+            json!({"name": "a", "value": 1}),
+            json!({"name": "c", "value": 3}),
+            json!({"name": "b", "value": 2}),
+        ];
+
+        params.apply_ordering(&mut items);
+        assert_eq!(items[0]["name"], "c");
+        assert_eq!(items[1]["name"], "b");
+        assert_eq!(items[2]["name"], "a");
+    }
+
+    #[test]
+    fn test_paginated_response_new() {
+        let items = vec!["a", "b", "c"];
+        let response = PaginatedResponse::new(items.clone(), 10, 0, 3);
+        assert_eq!(response.items, items);
+        assert_eq!(response.total, 10);
+        assert_eq!(response.offset, 0);
+        assert_eq!(response.limit, 3);
+        assert!(response.has_more);
+    }
+
+    #[test]
+    fn test_paginated_response_no_more() {
+        let items = vec!["a", "b", "c"];
+        let response = PaginatedResponse::new(items.clone(), 3, 0, 3);
+        assert!(!response.has_more);
     }
 }

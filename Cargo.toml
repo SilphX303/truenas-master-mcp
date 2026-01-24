@@ -6,6 +6,13 @@ description = "Official MCP server for TrueNAS API access"
 license = "MIT"
 repository = "https://github.com/hongkongkiwi/truenas-master-mcp"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "truenas-master-mcp"
+path = "src/main.rs"
+
 [features]
 default = ["scale", "core"]
 scale = []
@@ -27,7 +34,7 @@ url = "2.5"
 # HTTP/SSE server transports
 axum = "0.8"
 tokio-stream = "0.1"
-tower-http = { version = "0.6", features = ["cors", "fs"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 http-body-util = "0.1"
 futures-util = "0.3"
 
@@ -41,6 +48,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Configuration
 config = "0.15"
+serde_yaml = "0.9"
 
 # Base64 encoding
 base64 = "0.22"
@@ -50,6 +58,15 @@ urlencoding = "2.1"
 
 # CLI argument parsing
 clap = { version = "4.5", features = ["derive"] }
+
+# Caching
+moka = { version = "0.12", features = ["future"] }
+
+# Time for cache timestamps
+chrono = { version = "0.4", features = ["std"] }
+
+# OpenAPI generated client
+serde_repr = "0.1"
 
 [dev-dependencies]
 # Testing frameworks

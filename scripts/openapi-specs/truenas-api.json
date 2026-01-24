@@ -1,0 +1,3066 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "TrueNAS REST API",
+    "description": "TrueNAS Scale/CORE REST API v2.0",
+    "version": "2.0",
+    "contact": {
+      "name": "iXsystems",
+      "url": "https://www.truenas.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost/api/v2.0",
+      "description": "Local TrueNAS server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization"
+      },
+      "BasicAuth": {
+        "type": "http",
+        "scheme": "basic"
+      }
+    },
+    "schemas": {
+      "Pool": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "guid": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ONLINE",
+              "OFFLINE",
+              "DEGRADED",
+              "FAULTED"
+            ]
+          },
+          "size": {
+            "type": "integer"
+          },
+          "free": {
+            "type": "integer"
+          },
+          "allocated": {
+            "type": "integer"
+          },
+          "autotrim": {
+            "type": "string"
+          },
+          "healthy": {
+            "type": "boolean"
+          },
+          "warning": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PoolQueryOptions": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "order_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Dataset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "FILESYSTEM",
+              "VOLUME"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "available": {
+            "type": "integer"
+          },
+          "used": {
+            "type": "integer"
+          },
+          "quota": {
+            "type": "integer"
+          },
+          "refquota": {
+            "type": "integer"
+          },
+          "readonly": {
+            "type": "boolean"
+          },
+          "compression": {
+            "type": "string"
+          },
+          "deduplication": {
+            "type": "string"
+          },
+          "atime": {
+            "type": "string"
+          },
+          "exec": {
+            "type": "string"
+          },
+          "sync": {
+            "type": "string"
+          },
+          "snapdir": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateDatasetRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "pool"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the new dataset"
+          },
+          "pool": {
+            "type": "string",
+            "description": "Pool to create dataset in"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "FILESYSTEM",
+              "VOLUME"
+            ],
+            "default": "FILESYSTEM"
+          },
+          "volsize": {
+            "type": "integer",
+            "description": "Volume size for VOLUME type"
+          },
+          "compression": {
+            "type": "string"
+          },
+          "deduplication": {
+            "type": "string"
+          },
+          "quota": {
+            "type": "integer"
+          },
+          "refquota": {
+            "type": "integer"
+          },
+          "readonly": {
+            "type": "boolean"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "uid": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "group": {
+            "type": "integer"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "home": {
+            "type": "string"
+          },
+          "shell": {
+            "type": "string"
+          },
+          "password_disabled": {
+            "type": "boolean"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "sudo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "group": {
+            "type": "integer"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "home": {
+            "type": "string"
+          },
+          "shell": {
+            "type": "string"
+          },
+          "password_disabled": {
+            "type": "boolean"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "sudo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateUserRequest": {
+        "type": "object",
+        "properties": {
+          "full_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "home": {
+            "type": "string"
+          },
+          "shell": {
+            "type": "string"
+          },
+          "password_disabled": {
+            "type": "boolean"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "sudo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Group": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "gid": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "groupwise": {
+            "type": "boolean"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CreateGroupRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "gid": {
+            "type": "integer"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Vm": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "STOPPED",
+              "PAUSED",
+              "ERROR"
+            ]
+          },
+          "vcpus": {
+            "type": "integer"
+          },
+          "memory": {
+            "type": "integer"
+          },
+          "cpu_model": {
+            "type": "string"
+          },
+          "autostart": {
+            "type": "boolean"
+          },
+          "time": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "CreateVmRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "vcpus",
+          "memory"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "vcpus": {
+            "type": "integer"
+          },
+          "memory": {
+            "type": "integer"
+          },
+          "cpu_model": {
+            "type": "string"
+          },
+          "autostart": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "bootloader": {
+            "type": "string"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "App": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "STOPPED",
+              "DEPLOYING",
+              "STOPPING",
+              "ERROR"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "human_version": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "app_metadata": {
+            "type": "object"
+          }
+        }
+      },
+      "Catalog": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "trains": {
+            "type": "object"
+          }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "dataset": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "properties": {
+            "type": "object"
+          },
+          "used": {
+            "type": "integer"
+          },
+          "referenced": {
+            "type": "integer"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SmbShare": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "cifs_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "guestok": {
+            "type": "boolean"
+          },
+          "readonly": {
+            "type": "boolean"
+          },
+          "browsable": {
+            "type": "boolean"
+          },
+          "export": {
+            "type": "string"
+          }
+        }
+      },
+      "NfsExport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ro": {
+            "type": "boolean"
+          },
+          "sync": {
+            "type": "boolean"
+          },
+          "subtree_check": {
+            "type": "boolean"
+          }
+        }
+      },
+      "IscsiTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "auth_networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "IscsiLun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "integer"
+          },
+          "lun": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          }
+        }
+      },
+      "SystemInfo": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "cpu_model": {
+            "type": "string"
+          },
+          "cpu_cores": {
+            "type": "integer"
+          },
+          "cpu_threads": {
+            "type": "integer"
+          },
+          "memory_total": {
+            "type": "integer"
+          },
+          "memory_free": {
+            "type": "integer"
+          },
+          "uptime_seconds": {
+            "type": "integer"
+          },
+          "loadavg": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "model": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "build_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Alert": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "INFO",
+              "WARNING",
+              "CRITICAL",
+              "NOTICE"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "datetime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dismissed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Disk": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "devname": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "smart_status": {
+            "type": "string"
+          },
+          "temperature": {
+            "type": "integer"
+          },
+          "hddstandby": {
+            "type": "string"
+          },
+          "advpowermgmt": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Interface": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "mtu": {
+            "type": "integer"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "link_state": {
+            "type": "string"
+          }
+        }
+      },
+      "Route": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "gateway": {
+            "type": "string"
+          },
+          "netmask": {
+            "type": "string"
+          },
+          "interface": {
+            "type": "string"
+          }
+        }
+      },
+      "Service": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "service": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "STOPPED"
+            ]
+          },
+          "enable": {
+            "type": "boolean"
+          },
+          "pid": {
+            "type": "integer"
+          }
+        }
+      },
+      "ReplicationTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "target": {
+            "type": "string"
+          },
+          "recursive": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "object"
+          }
+        }
+      },
+      "CloudSyncTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "credentials": {
+            "type": "integer"
+          },
+          "schedule": {
+            "type": "object"
+          },
+          "state": {
+            "type": "object"
+          }
+        }
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "method": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "progress": {
+            "type": "object"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "SUCCESS",
+              "FAILED",
+              "ABORTED"
+            ]
+          },
+          "result": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "time_started": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "time_finished": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Certificate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "integer"
+          },
+          "type__": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "dn": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "KubernetesCluster": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "pods": {
+            "type": "integer"
+          },
+          "storage": {
+            "type": "object"
+          }
+        }
+      },
+      "KubernetesNode": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cpu": {
+            "type": "object"
+          },
+          "memory": {
+            "type": "object"
+          }
+        }
+      },
+      "KubernetesPod": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "cpu": {
+            "type": "object"
+          },
+          "memory": {
+            "type": "object"
+          }
+        }
+      },
+      "DockerImage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repo_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "size": {
+            "type": "integer"
+          },
+          "created": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    },
+    {
+      "BasicAuth": []
+    }
+  ],
+  "paths": {
+    "/pool": {
+      "get": {
+        "summary": "List all pools",
+        "operationId": "pool.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Pool"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pool/{id}": {
+      "get": {
+        "summary": "Get pool by ID",
+        "operationId": "pool.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pool details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pool"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pool/scrub": {
+      "post": {
+        "summary": "Start pool scrub",
+        "operationId": "pool.scrub",
+        "parameters": [
+          {
+            "name": "pool_name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scrub started"
+          }
+        }
+      }
+    },
+    "/pool/dataset": {
+      "get": {
+        "summary": "List all datasets",
+        "operationId": "pool.dataset.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of datasets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Dataset"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new dataset",
+        "operationId": "pool.dataset.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatasetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dataset created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pool/dataset/{id}": {
+      "get": {
+        "summary": "Get dataset by ID",
+        "operationId": "pool.dataset.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dataset details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update dataset",
+        "operationId": "pool.dataset.update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dataset updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete dataset",
+        "operationId": "pool.dataset.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dataset deleted"
+          }
+        }
+      }
+    },
+    "/pool/snapshot": {
+      "get": {
+        "summary": "List all snapshots",
+        "operationId": "pool.snapshot.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of snapshots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Snapshot"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new snapshot",
+        "operationId": "pool.snapshot.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dataset": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "recursive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshot created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pool/snapshot/{id}": {
+      "get": {
+        "summary": "Get snapshot by ID",
+        "operationId": "pool.snapshot.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete snapshot",
+        "operationId": "pool.snapshot.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot deleted"
+          }
+        }
+      }
+    },
+    "/user": {
+      "get": {
+        "summary": "List all users",
+        "operationId": "user.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new user",
+        "operationId": "user.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/{id}": {
+      "get": {
+        "summary": "Get user by ID",
+        "operationId": "user.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update user",
+        "operationId": "user.update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete user",
+        "operationId": "user.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User deleted"
+          }
+        }
+      }
+    },
+    "/user/id/{username}": {
+      "get": {
+        "summary": "Get user by username",
+        "operationId": "user.get_user_obj_id",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User ID"
+          }
+        }
+      }
+    },
+    "/group": {
+      "get": {
+        "summary": "List all groups",
+        "operationId": "group.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of groups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Group"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new group",
+        "operationId": "group.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Group created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/group/{id}": {
+      "get": {
+        "summary": "Get group by ID",
+        "operationId": "group.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete group",
+        "operationId": "group.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group deleted"
+          }
+        }
+      }
+    },
+    "/vm": {
+      "get": {
+        "summary": "List all VMs",
+        "operationId": "vm.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of VMs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Vm"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new VM",
+        "operationId": "vm.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vm"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vm/{id}": {
+      "get": {
+        "summary": "Get VM by ID",
+        "operationId": "vm.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vm"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update VM",
+        "operationId": "vm.update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete VM",
+        "operationId": "vm.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM deleted"
+          }
+        }
+      }
+    },
+    "/vm/{id}/status": {
+      "get": {
+        "summary": "Get VM status",
+        "operationId": "vm.get_vm_state",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM status"
+          }
+        }
+      }
+    },
+    "/vm/{id}/start": {
+      "post": {
+        "summary": "Start VM",
+        "operationId": "vm.start",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM started"
+          }
+        }
+      }
+    },
+    "/vm/{id}/stop": {
+      "post": {
+        "summary": "Stop VM",
+        "operationId": "vm.stop",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM stopped"
+          }
+        }
+      }
+    },
+    "/vm/{id}/restart": {
+      "post": {
+        "summary": "Restart VM",
+        "operationId": "vm.restart",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM restarted"
+          }
+        }
+      }
+    },
+    "/vm/{id}/powercycle": {
+      "post": {
+        "summary": "Power cycle VM",
+        "operationId": "vm.powercycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM power cycled"
+          }
+        }
+      }
+    },
+    "/vm/{id}/clone": {
+      "post": {
+        "summary": "Clone VM",
+        "operationId": "vm.clone",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM cloned"
+          }
+        }
+      }
+    },
+    "/app": {
+      "get": {
+        "summary": "List all apps",
+        "operationId": "app.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of apps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/App"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/app/{id}": {
+      "get": {
+        "summary": "Get app by ID",
+        "operationId": "app.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "App details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/app/{id}/start": {
+      "post": {
+        "summary": "Start app",
+        "operationId": "app.start",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "App started"
+          }
+        }
+      }
+    },
+    "/app/{id}/stop": {
+      "post": {
+        "summary": "Stop app",
+        "operationId": "app.stop",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "App stopped"
+          }
+        }
+      }
+    },
+    "/app/{id}/restart": {
+      "post": {
+        "summary": "Restart app",
+        "operationId": "app.restart",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "App restarted"
+          }
+        }
+      }
+    },
+    "/catalog": {
+      "get": {
+        "summary": "List all catalogs",
+        "operationId": "catalog.query",
+        "responses": {
+          "200": {
+            "description": "List of catalogs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Catalog"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/smb/share": {
+      "get": {
+        "summary": "List all SMB shares",
+        "operationId": "smb.share.query",
+        "responses": {
+          "200": {
+            "description": "List of SMB shares",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SmbShare"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create SMB share",
+        "operationId": "smb.share.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Share created"
+          }
+        }
+      }
+    },
+    "/smb/share/{id}": {
+      "get": {
+        "summary": "Get SMB share by ID",
+        "operationId": "smb.share.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Share details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmbShare"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete SMB share",
+        "operationId": "smb.share.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Share deleted"
+          }
+        }
+      }
+    },
+    "/nfs/export": {
+      "get": {
+        "summary": "List all NFS exports",
+        "operationId": "nfs.export.query",
+        "responses": {
+          "200": {
+            "description": "List of NFS exports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NfsExport"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create NFS export",
+        "operationId": "nfs.export.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Export created"
+          }
+        }
+      }
+    },
+    "/nfs/export/{id}": {
+      "delete": {
+        "summary": "Delete NFS export",
+        "operationId": "nfs.export.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export deleted"
+          }
+        }
+      }
+    },
+    "/iscsi/target": {
+      "get": {
+        "summary": "List all iSCSI targets",
+        "operationId": "iscsi.target.query",
+        "responses": {
+          "200": {
+            "description": "List of iSCSI targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IscsiTarget"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create iSCSI target",
+        "operationId": "iscsi.target.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Target created"
+          }
+        }
+      }
+    },
+    "/iscsi/target/{id}": {
+      "delete": {
+        "summary": "Delete iSCSI target",
+        "operationId": "iscsi.target.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Target deleted"
+          }
+        }
+      }
+    },
+    "/iscsi/lun": {
+      "get": {
+        "summary": "List all iSCSI LUNs",
+        "operationId": "iscsi.lun.query",
+        "responses": {
+          "200": {
+            "description": "List of iSCSI LUNs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IscsiLun"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/info": {
+      "get": {
+        "summary": "Get system information",
+        "operationId": "system.info",
+        "responses": {
+          "200": {
+            "description": "System info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/alert": {
+      "delete": {
+        "summary": "Clear all alerts",
+        "operationId": "alert.clear",
+        "responses": {
+          "200": {
+            "description": "Alerts cleared"
+          }
+        }
+      }
+    },
+    "/system/alert/{id}": {
+      "delete": {
+        "summary": "Dismiss alert",
+        "operationId": "alert.dismiss",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Alert dismissed"
+          }
+        }
+      }
+    },
+    "/system/reboot": {
+      "post": {
+        "summary": "Reboot system",
+        "operationId": "system.reboot",
+        "responses": {
+          "200": {
+            "description": "Reboot initiated"
+          }
+        }
+      }
+    },
+    "/system/shutdown": {
+      "post": {
+        "summary": "Shutdown system",
+        "operationId": "system.shutdown",
+        "responses": {
+          "200": {
+            "description": "Shutdown initiated"
+          }
+        }
+      }
+    },
+    "/disk": {
+      "get": {
+        "summary": "List all disks",
+        "operationId": "disk.query",
+        "responses": {
+          "200": {
+            "description": "List of disks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Disk"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/disk/{id}": {
+      "get": {
+        "summary": "Get disk by ID",
+        "operationId": "disk.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disk details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Disk"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interface": {
+      "get": {
+        "summary": "List all interfaces",
+        "operationId": "interface.query",
+        "responses": {
+          "200": {
+            "description": "List of interfaces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Interface"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/route": {
+      "get": {
+        "summary": "List all routes",
+        "operationId": "route.query",
+        "responses": {
+          "200": {
+            "description": "List of routes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Route"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/service": {
+      "get": {
+        "summary": "List all services",
+        "operationId": "service.query",
+        "responses": {
+          "200": {
+            "description": "List of services",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Service"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/service/{id}": {
+      "get": {
+        "summary": "Get service by ID",
+        "operationId": "service.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Service"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/service/{id}/start": {
+      "post": {
+        "summary": "Start service",
+        "operationId": "service.start",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service started"
+          }
+        }
+      }
+    },
+    "/service/{id}/stop": {
+      "post": {
+        "summary": "Stop service",
+        "operationId": "service.stop",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service stopped"
+          }
+        }
+      }
+    },
+    "/service/{id}/restart": {
+      "post": {
+        "summary": "Restart service",
+        "operationId": "service.restart",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service restarted"
+          }
+        }
+      }
+    },
+    "/replication": {
+      "get": {
+        "summary": "List all replication tasks",
+        "operationId": "replication.query",
+        "responses": {
+          "200": {
+            "description": "List of replication tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReplicationTask"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create replication task",
+        "operationId": "replication.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replication task created"
+          }
+        }
+      }
+    },
+    "/replication/{id}": {
+      "get": {
+        "summary": "Get replication task by ID",
+        "operationId": "replication.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replication task details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicationTask"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete replication task",
+        "operationId": "replication.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replication task deleted"
+          }
+        }
+      }
+    },
+    "/replication/{id}/run": {
+      "post": {
+        "summary": "Run replication task",
+        "operationId": "replication.run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Replication task started"
+          }
+        }
+      }
+    },
+    "/cloudsync": {
+      "get": {
+        "summary": "List all cloud sync tasks",
+        "operationId": "cloudsync.query",
+        "responses": {
+          "200": {
+            "description": "List of cloud sync tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CloudSyncTask"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create cloud sync task",
+        "operationId": "cloudsync.create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cloud sync task created"
+          }
+        }
+      }
+    },
+    "/cloudsync/{id}": {
+      "get": {
+        "summary": "Get cloud sync task by ID",
+        "operationId": "cloudsync.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cloud sync task details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudSyncTask"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete cloud sync task",
+        "operationId": "cloudsync.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cloud sync task deleted"
+          }
+        }
+      }
+    },
+    "/cloudsync/{id}/run": {
+      "post": {
+        "summary": "Run cloud sync task",
+        "operationId": "cloudsync.run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cloud sync task started"
+          }
+        }
+      }
+    },
+    "/task": {
+      "get": {
+        "summary": "List all tasks",
+        "operationId": "core.query",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/task/{id}": {
+      "get": {
+        "summary": "Get task by ID",
+        "operationId": "core.get_jobs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/task/{id}/abort": {
+      "post": {
+        "summary": "Abort task",
+        "operationId": "core.abort",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task aborted"
+          }
+        }
+      }
+    },
+    "/certificate": {
+      "get": {
+        "summary": "List all certificates",
+        "operationId": "certificate.query",
+        "responses": {
+          "200": {
+            "description": "List of certificates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Certificate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/certificate/{id}": {
+      "get": {
+        "summary": "Get certificate by ID",
+        "operationId": "certificate.get_instance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Certificate details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Certificate"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kubernetes": {
+      "get": {
+        "summary": "Get Kubernetes status",
+        "operationId": "kubernetes.query",
+        "responses": {
+          "200": {
+            "description": "Kubernetes status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KubernetesCluster"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kubernetes/node": {
+      "get": {
+        "summary": "List Kubernetes nodes",
+        "operationId": "kubernetes.node.query",
+        "responses": {
+          "200": {
+            "description": "List of Kubernetes nodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KubernetesNode"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kubernetes/pod": {
+      "get": {
+        "summary": "List Kubernetes pods",
+        "operationId": "kubernetes.pod.query",
+        "responses": {
+          "200": {
+            "description": "List of Kubernetes pods",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KubernetesPod"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docker/images": {
+      "get": {
+        "summary": "List all Docker images",
+        "operationId": "docker.image.query",
+        "responses": {
+          "200": {
+            "description": "List of Docker images",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DockerImage"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docker/images/pull": {
+      "post": {
+        "summary": "Pull Docker image",
+        "operationId": "docker.image.pull",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from_image": {
+                    "type": "string"
+                  },
+                  "tag": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Image pull started"
+          }
+        }
+      }
+    }
+  }
+}

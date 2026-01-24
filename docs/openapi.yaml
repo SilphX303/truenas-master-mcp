@@ -1,0 +1,662 @@
+openapi: 3.0.0
+info:
+  title: TrueNAS Master MCP Server
+  description: Model Context Protocol server for TrueNAS API access
+  version: 0.1.0
+  contact:
+    name: TrueNAS Master MCP
+    url: https://github.com/hongkongkiwi/truenas-master-mcp
+
+servers:
+  - url: https://localhost
+    description: Local MCP server (stdio or HTTP transport)
+
+tags:
+  - name: Users
+    description: User management operations
+  - name: Groups
+    description: Group management operations
+  - name: Pools
+    description: Storage pool operations
+  - name: Datasets
+    description: ZFS dataset operations
+  - name: Shares
+    description: SMB and NFS share operations
+  - name: Snapshots
+    description: Snapshot management
+  - name: iSCSI
+    description: iSCSI target operations
+  - name: Apps
+    description: Applications (SCALE) and Jails (CORE)
+  - name: VMs
+    description: Virtual machine operations
+  - name: Network
+    description: Network and service operations
+  - name: System
+    description: System-level operations
+  - name: Tasks
+    description: Async task operations
+  - name: Kubernetes
+    description: Kubernetes cluster operations (SCALE)
+  - name: Docker
+    description: Docker container operations (SCALE)
+
+paths:
+  # Users
+  /tools/list_users:
+    get:
+      tags:
+        - Users
+      summary: List all users
+      description: Returns a list of all users on the TrueNAS system
+      operationId: listUsers
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /tools/get_user:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      description: Returns user details for the specified user ID
+      operationId: getUser
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /tools/create_user:
+    post:
+      tags:
+        - Users
+      summary: Create a new user
+      description: Creates a new user on the TrueNAS system
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '200':
+          description: User created successfully
+
+  # Pools
+  /tools/list_pools:
+    get:
+      tags:
+        - Pools
+      summary: List storage pools
+      description: Returns a list of all storage pools on the TrueNAS system
+      operationId: listPools
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pool'
+
+  /tools/get_pool_status:
+    get:
+      tags:
+        - Pools
+      summary: Get pool status
+      description: Returns detailed status information for a specific storage pool
+      operationId: getPoolStatus
+      parameters:
+        - name: pool_name
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+
+  # Datasets
+  /tools/list_datasets:
+    get:
+      tags:
+        - Datasets
+      summary: List datasets
+      description: Returns a list of all ZFS datasets on the TrueNAS system
+      operationId: listDatasets
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dataset'
+
+  /tools/get_dataset:
+    get:
+      tags:
+        - Datasets
+      summary: Get dataset by path
+      description: Returns details for a specific dataset path
+      operationId: getDataset
+      parameters:
+        - name: dataset_path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataset'
+
+  /tools/create_dataset:
+    post:
+      tags:
+        - Datasets
+      summary: Create a dataset
+      description: Creates a new ZFS dataset
+      operationId: createDataset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pool_name
+                - dataset_name
+              properties:
+                pool_name:
+                  type: string
+                dataset_name:
+                  type: string
+      responses:
+        '200':
+          description: Dataset created successfully
+
+  # Snapshots
+  /tools/list_snapshots:
+    get:
+      tags:
+        - Snapshots
+      summary: List snapshots
+      description: Returns a list of all snapshots on the TrueNAS system
+      operationId: listSnapshots
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Snapshot'
+
+  /tools/create_snapshot:
+    post:
+      tags:
+        - Snapshots
+      summary: Create a snapshot
+      description: Creates a new snapshot of the specified dataset
+      operationId: createSnapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dataset
+                - snapshot_name
+              properties:
+                dataset:
+                  type: string
+                snapshot_name:
+                  type: string
+      responses:
+        '200':
+          description: Snapshot created successfully
+
+  # Apps
+  /tools/list_apps:
+    get:
+      tags:
+        - Apps
+      summary: List apps
+      description: Returns a list of all installed applications (SCALE)
+      operationId: listApps
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/App'
+
+  /tools/start_app:
+    post:
+      tags:
+        - Apps
+      summary: Start an app
+      description: Starts the specified application
+      operationId: startApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - app_name
+              properties:
+                app_name:
+                  type: string
+      responses:
+        '200':
+          description: App started successfully
+
+  /tools/stop_app:
+    post:
+      tags:
+        - Apps
+      summary: Stop an app
+      description: Stops the specified application
+      operationId: stopApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - app_name
+              properties:
+                app_name:
+                  type: string
+                force:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: App stopped successfully
+
+  # VMs
+  /tools/list_vms:
+    get:
+      tags:
+        - VMs
+      summary: List virtual machines
+      description: Returns a list of all virtual machines
+      operationId: listVms
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VM'
+
+  /tools/start_vm:
+    post:
+      tags:
+        - VMs
+      summary: Start a VM
+      description: Starts the specified virtual machine
+      operationId: startVm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vm_id
+              properties:
+                vm_id:
+                  type: integer
+      responses:
+        '200':
+          description: VM started successfully
+
+  /tools/stop_vm:
+    post:
+      tags:
+        - VMs
+      summary: Stop a VM
+      description: Stops the specified virtual machine
+      operationId: stopVm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vm_id
+              properties:
+                vm_id:
+                  type: integer
+      responses:
+        '200':
+          description: VM stopped successfully
+
+  # Tasks
+  /tools/list_tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List tasks
+      description: Returns a list of all running and recent background tasks
+      operationId: listTasks
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+
+  /tools/get_task_status:
+    get:
+      tags:
+        - Tasks
+      summary: Get task status
+      description: Returns the status of a specific background task
+      operationId: getTaskStatus
+      parameters:
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /tools/abort_task:
+    post:
+      tags:
+        - Tasks
+      summary: Abort a task
+      description: Aborts a running background task
+      operationId: abortTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - task_id
+              properties:
+                task_id:
+                  type: integer
+      responses:
+        '200':
+          description: Task aborted successfully
+
+  # System
+  /tools/get_system_info:
+    get:
+      tags:
+        - System
+      summary: Get system information
+      description: Returns general system information
+      operationId: getSystemInfo
+      responses:
+        '200':
+          description: Successful response
+
+  /tools/reboot_system:
+    post:
+      tags:
+        - System
+      summary: Reboot the system
+      description: Reboots the TrueNAS system
+      operationId: rebootSystem
+      responses:
+        '200':
+          description: Reboot initiated successfully
+
+  # Kubernetes (SCALE)
+  /tools/get_kubernetes_status:
+    get:
+      tags:
+        - Kubernetes
+      summary: Get Kubernetes status
+      description: Returns the status of the Kubernetes cluster
+      operationId: getKubernetesStatus
+      responses:
+        '200':
+          description: Successful response
+
+  /tools/get_kubernetes_nodes:
+    get:
+      tags:
+        - Kubernetes
+      summary: List Kubernetes nodes
+      description: Returns a list of all Kubernetes nodes
+      operationId: getKubernetesNodes
+      responses:
+        '200':
+          description: Successful response
+
+  /tools/get_kubernetes_pods:
+    get:
+      tags:
+        - Kubernetes
+      summary: List Kubernetes pods
+      description: Returns a list of all Kubernetes pods
+      operationId: getKubernetesPods
+      responses:
+        '200':
+          description: Successful response
+
+  # Docker (SCALE)
+  /tools/list_docker_images:
+    get:
+      tags:
+        - Docker
+      summary: List Docker images
+      description: Returns a list of all Docker images
+      operationId: listDockerImages
+      responses:
+        '200':
+          description: Successful response
+
+  /tools/pull_docker_image:
+    post:
+      tags:
+        - Docker
+      summary: Pull a Docker image
+      description: Pulls the specified Docker image
+      operationId: pullDockerImage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                tag:
+                  type: string
+                  default: latest
+      responses:
+        '200':
+          description: Image pull initiated successfully
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        uid:
+          type: integer
+        home:
+          type: string
+        email:
+          type: string
+        full_name:
+          type: string
+
+    Pool:
+      type: object
+      properties:
+        name:
+          type: string
+        guid:
+          type: string
+        status:
+          type: string
+        size:
+          type: integer
+          format: int64
+        free:
+          type: integer
+          format: int64
+        description:
+          type: string
+
+    Dataset:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        pool:
+          type: string
+        type:
+          type: string
+        size:
+          type: integer
+          format: int64
+        available:
+          type: integer
+          format: int64
+
+    Snapshot:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        dataset:
+          type: string
+        created:
+          type: string
+          format: date-time
+        size:
+          type: integer
+          format: int64
+
+    App:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+        version:
+          type: string
+        chart_version:
+          type: string
+
+    VM:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        state:
+          type: string
+        vcpus:
+          type: integer
+        memory:
+          type: integer
+          format: int64
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        method:
+          type: string
+        args:
+          type: object
+        state:
+          type: string
+        progress:
+          type: integer
+        error:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        finished_at:
+          type: integer
+          format: int64
+
+    CreateUserRequest:
+      type: object
+      required:
+        - username
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        email:
+          type: string
+        full_name:
+          type: string
+        uid:
+          type: integer
+        home:
+          type: string
