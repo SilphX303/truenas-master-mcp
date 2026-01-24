@@ -212,7 +212,6 @@ fn test_config_ssl_verification_disabled() {
 
 mod validation_tests {
     use super::*;
-    use truenas_master_mcp::error::TrueNasError;
 
     #[test]
     fn test_config_requires_server_url() {
@@ -406,8 +405,6 @@ mod validation_tests {
 }
 
 mod file_loading_tests {
-    use super::*;
-
     #[test]
     fn test_config_path_nonexistent() {
         let nonexistent = std::path::Path::new("/nonexistent/path/config.yaml");

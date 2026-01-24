@@ -268,8 +268,6 @@ async fn test_cache_stats() {
 
     let stats = cache.stats();
     // Stats function should return values (actual count may vary based on cache timing)
-    assert!(stats.pools_entries >= 0);
-    assert!(stats.datasets_entries >= 0);
     assert_eq!(stats.system_info_entries, 0);
     assert_eq!(stats.apps_entries, 0);
     assert_eq!(stats.alerts_entries, 0);
