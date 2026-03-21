@@ -2343,7 +2343,13 @@ async fn sse_handler() -> impl axum::response::IntoResponse {
     use axum::response::sse::{Event, Sse};
     use futures_util::stream;
 
-    let stream = stream::empty::<std::result::Result<Event, std::convert::Infallible>>();
+    let stream = stream::once(async move {
+        Ok::<_, std::convert::Infallible>(
+            Event::default()
+                .event("endpoint")
+                .data("/messages")
+        )
+    });
 
     Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
