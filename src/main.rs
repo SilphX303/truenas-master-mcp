@@ -2211,6 +2211,10 @@ async fn handle_request(server: &TrueNasServerImpl, request: Value) -> anyhow::R
                 .await
                 .map_err(|e| anyhow::anyhow!("Prompt error: {}", e))?
         }
+        // Handle notifications silently (no response needed)
+        m if m.starts_with("notifications/") => {
+            return Ok(String::new());
+        }
         _ => return Err(anyhow::anyhow!("Unknown method: {}", method)),
     };
 
