@@ -2172,6 +2172,7 @@ async fn handle_request(server: &TrueNasServerImpl, request: Value) -> anyhow::R
                 }
             });
             json!({
+                "protocolVersion": "2024-11-05",
                 "serverInfo": server.get_server_info(),
                 "capabilities": capabilities
             })
